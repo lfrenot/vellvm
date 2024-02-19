@@ -1,0 +1,24 @@
+-R . Patterns
+-R ../Imp2Vir Imp2Vir
+-R ../../src/coq Vellvm
+-I ../../lib/QuickChick/src
+-R ../../lib/QuickChick/src QuickChick
+-R ../../lib/flocq-quickchick FlocqQuickChick
+
+## Anonymous CVIR
+# Utils_tutorial.v
+# Fin.v
+
+# Sir.v
+# Vec.v
+# Unique.v
+# Relabel.v
+# CvirCombinators.v
+# CvirCombinatorsWF.v
+# CompileExpr.v
+# Imp2Cvir.v
+# Semantics.v
+
+
+Patterns0.v
+Patterns.v
