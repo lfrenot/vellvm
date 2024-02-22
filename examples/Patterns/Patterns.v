@@ -9,7 +9,8 @@ Inductive Pat : Type -> Type :=
   | Graph: Pat graph
   | When: forall S, Pat S -> (S -> bool) -> Pat S
   | Head: forall S, Pat S -> (S -> graph) -> Pat (blk * graph)
-  | Seq: forall S, Pat S -> (S -> graph) -> Pat (graph * graph)
+  (* | Seq: forall S, Pat S -> (S -> graph) -> Pat (graph * graph) *)
+  | Subgraph: forall S, Pat S -> (S -> graph) -> Pat (graph * graph)
   | Cart: forall S1 S2, Pat S1 -> Pat S2 -> Pat (S1 * S2)
   (* | Loop: Pat T (graph * graph * graph) *)
   .
@@ -41,12 +42,12 @@ end.
 
 Definition find_heads (G: graph) : list (blk * graph) := find_heads_rec G G.
 
-(* Seq Pattern matching *)
+(* Subgraph Pattern matching *)
 
 Fixpoint subgraph_rec {A} (l1 l2 acc: list A): list (list A*list A) :=
   match acc with
     | [] => [(l1, l2)]
-    | a::q => (subgraph_rec (a::l1) l2 q) ++ (subgraph_rec l1 (a::l2) q)
+    | a::q => (subgraph_rec (l1++[a]) l2 q) ++ (subgraph_rec l1 (l2++[a]) q)
 end.
 
 Definition subgraphs {A} (G: list A) := subgraph_rec [] [] G.
@@ -65,21 +66,34 @@ Fixpoint no_intersect l1 l2: bool := match l2 with
   | a::q => if raw_id_in a l1 then false else no_intersect l1 q
 end.
 
+(* Fixpoint Inn {A} (n: nat) (a:A) (l: list A) : Prop :=
+  match l with
+  | [] => n=0
+  | b::q => match n with
+    | 0 => ~(b = a) /\ Inn 0 a q
+    | S m => (b=a /\ Inn m a q) \/ (~(b=a) /\ Inn n a q)
+    end
+  end. *)
+
+Definition equiv {A} (l1 l2: list A) := forall (x:A), In x l1 <-> In x l2. 
+
 (* Definition find_seqs_aux (G1 G2: graph): option (graph*graph) := if no_intersect (outputs G2) (inputs G1) then Some (G1, G2) else None. *)
 
-Fixpoint find_seqs_rec (G: list (graph*graph)): list (graph*graph) := match G with
+(* Fixpoint find_seqs_rec (G: list (graph*graph)): list (graph*graph) := match G with
   | [] => []
   | (G1,G2)::q => if no_intersect (outputs G2) (inputs G1) then (G1,G2)::(find_seqs_rec q) else find_seqs_rec q
 end.
 
-Definition find_seqs (G: graph): list (graph*graph) := find_seqs_rec (subgraphs G).
+Definition find_seqs (G: graph): list (graph*graph) := find_seqs_rec (subgraphs G). *)
+
+(* Pattern matching functions *)
 
 Fixpoint MatchAll {S} (P: Pat S) (G: graph) : list S :=
   match P with
     | When _ p f => filter f (MatchAll p G)
     | Head _ p f => flat_map find_heads (map f (MatchAll p G))
     | Graph => [G]
-    | Seq _ p f => flat_map find_seqs (map f (MatchAll p G))
+    | Subgraph _ p f => flat_map subgraphs (map f (MatchAll p G))
     | _ => []
 end.
 
@@ -151,12 +165,127 @@ Proof.
   intros. apply head_rec_correct.
 Qed.
 
-(* Correction of find_seqs *)
+(* Correction of subgraphs *)
 
-Lemma inputs_cons: forall (G: graph) a, inputs (a::G) = (blk_id a) :: (inputs G).
+Lemma ABC_ABC: forall A B C, (A \/ B \/ C) <-> ((A\/B) \/ C).
+Proof. 
+  intros. split; intro H.
+  - destruct H as [|[|]]. left. now left. left. now right. now right.
+  - destruct H as [[|]|]. now left. right. now left. right. now right.
+Qed.
+
+Lemma ABC_ACB: forall A B C, (A \/ B \/ C) <-> ((A \/ C) \/ B).
 Proof.
-  cbn. trivial.
-Qed. 
+  intros. split; intro H.
+  - destruct H as [|[|]]. left. now left. now right. left. now right.
+  - destruct H as [[|]|]. now left. right. now right. right. now left.
+Qed.
+
+Lemma or_in_nil {A}: forall (G: list A) (x:A), (In x [] \/ In x G) -> In x G.
+Proof.
+  intros G x H. now destruct H.
+Qed.
+
+Lemma equiv_incl {A}: forall (l1 l2: list A), equiv l1 l2 <-> (incl l1 l2) /\ (incl l2 l1).
+Proof.
+  unfold equiv. unfold incl. split; intro H; split;apply H.
+Qed.
+
+Lemma in_or_app_single {A}: forall (l: list A) x a, In x (l++[a]) <-> In x l \/ a = x.
+Proof.
+  intros. split. intro. apply in_app_or in H. cbn in H. destruct H as [|[|]]. now left. now right. contradiction.
+  - intro H. apply in_or_app. destruct H as [|]. now left. cbn. right. now left.
+Qed.
+
+Lemma subgraph_rec_correct_l: forall (G G1 G2 l1 l2: graph) x, In (G1, G2) (subgraph_rec l1 l2 G) -> In x l1 -> In x G1.
+Proof.
+  induction G as [|a G IHG];cbn;intros G1 G2 l1 l2 x H0 H. destruct H0. 3:apply in_app_or in H0 as [H0|H0].
+  - apply pair_equal_spec in H0 as [H0 H1]. now subst G1.
+  - contradiction.
+  - eapply IHG. apply H0. apply in_or_app. now left. 
+  - eapply IHG. apply H0. trivial.
+Qed.
+
+Lemma subgraph_rec_correct_r: forall (G G1 G2 l1 l2: graph) x, In (G1, G2) (subgraph_rec l1 l2 G) -> In x l2 -> In x G2.
+Proof.
+  induction G as [|a G IHG];cbn;intros G1 G2 l1 l2 x H0 H. destruct H0. 3:apply in_app_or in H0 as [H0|H0].
+  - apply pair_equal_spec in H0 as [H0 H1]. now subst G2.
+  - contradiction.
+  - eapply IHG. apply H0. trivial.
+  - eapply IHG. apply H0. apply in_or_app. now left.
+Qed.
+
+Lemma subgraph_rec_correct_g: forall (G G1 G2 l1 l2: graph) x, In (G1, G2) (subgraph_rec l1 l2 G) -> In x G -> In x G1 \/ In x G2.
+Proof.
+  induction G as [|a G IHG];cbn;intros G1 G2 l1 l2 x H0 H. contradiction. destruct H; apply in_app_or in H0 as [|].
+  - left. eapply subgraph_rec_correct_l. apply H0. subst a. apply in_or_app. right. now left.
+  - right. eapply subgraph_rec_correct_r. apply H0. subst a. apply in_or_app. right. now left.
+  - eapply IHG. now apply H0. trivial.
+  - eapply IHG. now apply H0. trivial.
+Qed.
+
+Lemma subgraph_rec_correct1_l: forall (G G1 G2 l1 l2: graph) x, In (G1, G2) (subgraph_rec l1 l2 G) -> In x G1 -> In x l1 \/ In x G.
+Proof.
+  induction G as [|a G IHG];cbn;intros G1 G2 l1 l2 x H H0. destruct H. 3:apply in_app_or in H as [|].
+  - apply pair_equal_spec in H as [H1 H2]. subst G1. now left.
+  - contradiction.
+  - apply ABC_ABC. rewrite <-in_or_app_single. eapply IHG. apply H. apply H0.
+  - apply ABC_ACB. left. eapply IHG. apply H. trivial.
+Qed.
+
+Lemma subgraph_rec_correct1_r: forall (G G1 G2 l1 l2: graph) x, In (G1, G2) (subgraph_rec l1 l2 G) -> In x G2 -> In x l2 \/ In x G.
+Proof.
+  induction G as [|a G IHG];cbn;intros G1 G2 l1 l2 x H H0. destruct H. 3:apply in_app_or in H as [|].
+  - apply pair_equal_spec in H as [H1 H2]. subst G2. now left.
+  - contradiction.
+  - apply ABC_ACB. left. eapply IHG. apply H. trivial.
+  - apply ABC_ABC. rewrite <-in_or_app_single. eapply IHG. apply H. apply H0.
+Qed.
+
+Lemma subgraphs_correct1: forall (G G1 G2: graph), In (G1,G2) (subgraphs G) -> equiv G (G1++G2).
+Proof.
+  intro G. induction G; intros G1 G2 H;split. now intro. destruct H as [|].
+  - apply pair_equal_spec in H as []. now subst G1 G2.
+  - contradiction.
+  - intro H0; destruct H0; apply in_or_app. subst a. apply in_app_or in H as [|].
+    * left. eapply subgraph_rec_correct_l. apply H. now left.
+    * right. eapply subgraph_rec_correct_r. apply H. now left.
+    * apply in_app_or in H as [|];eapply subgraph_rec_correct_g. apply H. trivial. apply H. trivial.
+  - intro H0; apply in_app_or in H0 as [];apply or_in_nil.
+    * eapply subgraph_rec_correct1_l. apply H. trivial.
+    * eapply subgraph_rec_correct1_r. apply H. trivial.
+Qed.
+
+Lemma subgraph_correct2: forall (G G1 G2: graph), equiv G (G1++G2) -> (exists G1' G2', In (G1', G2') (subgraphs G) /\ equiv G1 G1' /\ equiv G2 G2').
+Proof.
+  induction G as [|a G IHG].
+  - intros. exists [], []. unfold equiv in H. split. 2: split;split.
+    * cbn. now left.
+    * intro. apply H. apply in_or_app. now left.
+    * now cbn.
+    * intro. apply H. apply in_or_app. now right.
+    * now cbn.
+  - intros. eexists. eexists. split. 2:split.
+    * cbn. apply in_or_app.
+Abort.
+
+
+Lemma subgraphs_correct2: forall (G' G: graph), incl G' G -> exists G1 G2, equiv G1 G' /\ In (G1, G2) (subgraphs G).
+Proof.
+  intro G'. induction G'.
+  - cbn. intros. exists [], (rev G). split. now cbn. induction G. cbn. now left. 
+Abort.
+
+Lemma subgraphs_correct2: forall (G G1 G2: graph) x, In x G -> In (G1,G2) (subgraphs G) -> (In x G1 \/ In x G2).
+Proof.
+  intro G. induction G;cbn;intros G1 G2 x H H0.
+  - contradiction.
+  -  
+Abort.
+
+(* Correction of no_intersect *)
+
+Lemma inputs_cons: forall (G: graph) a, inputs (a::G) = (blk_id a) :: (inputs G). Proof. now cbn. Qed.
 
 Lemma list_disjoint_cons_r_iff:
     forall (A: Type) (a: A) (l1 l2: list A),
@@ -176,25 +305,16 @@ Proof.
   - now trivial.
   - inversion H. unfold no_reentrance. rewrite inputs_cons. apply Coqlib.list_disjoint_cons_r.
     * replace (Coqlib.list_disjoint (outputs G2) (inputs G1)) with (no_reentrance G1 G2) by (trivial).
-      apply IHG1. unfold find_seqs_rec. induction (no_intersect (outputs G2) (inputs G1)).
+      apply IHG1. induction (no_intersect (outputs G2) (inputs G1)).
       trivial. now induction (raw_id_in (blk_id a) (outputs G2)).
     * now induction (raw_id_in (blk_id a) (outputs G2)).
   - assert (H0: no_intersect (outputs G2) (inputs (a :: G1)) = true).
     * rewrite inputs_cons. cbn. induction (raw_id_in (blk_id a) (outputs G2)).
-      + unfold no_reentrance in H. rewrite inputs_cons in H. now apply list_disjoint_cons_r_iff in H as [_ H].
-      + unfold find_seqs_rec in IHG1. unfold no_reentrance in H. rewrite inputs_cons in H. apply list_disjoint_cons_r_iff in H as [H _].
+      + unfold no_reentrance in H. rewrite inputs_cons in H. now apply list_disjoint_cons_r_iff in H as [].
+      + unfold no_reentrance in H. rewrite inputs_cons in H. apply list_disjoint_cons_r_iff in H as [].
         unfold no_reentrance in IHG1. now apply IHG1.
     * now induction (no_intersect (outputs G2) (inputs (a :: G1))).
 Qed.
-
-
-Lemma subgraphs_correct: forall (G1 G: graph), incl G1 G -> exists G2, In (G1, G2) (subgraphs G).
-Proof.
-  intros. induction G1.
-  - intros. exists G. induction G. now left. admit.
-  - apply incl_cons_inv in H as [Ha H]. assert (H0: exists G2 : list blk, In (G1, G2) (subgraphs G)) by (now apply IHG1).
-    destruct H0 as [G2 H0]. exists (remove_blk a G2).
-Abort.
 
 (* Correction of Match *)
 
@@ -207,6 +327,10 @@ Proof.
 Qed.
 
 Theorem pat_when_correct {S}: forall (P: Pat S) f x G, In x (MatchAll (When _ P f) G) <-> In x (MatchAll P G) /\ f x = true.
-Proof. 
+Proof.
   intros. apply filter_In.
 Qed.
+
+Theorem pat_subgraph_correct {S}: forall (P: Pat S) f G G1 G2, In (G1, G2) (MatchAll (Subgraph _ P f) G) <-> exists G' G1' G2', equiv G1 G1' /\ equiv G2 G2' /\ In G' (map f (MatchAll P G)) /\ equiv G' (G1'++G2').
+Proof.
+Abort.
