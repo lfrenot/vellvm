@@ -1,5 +1,5 @@
 From Vellvm Require Import Syntax ScopeTheory.
-Require Import List.
+Require Import List Lia.
 Import ListNotations.
 
 Notation graph := (ocfg dtyp).
@@ -66,16 +66,17 @@ Fixpoint no_intersect l1 l2: bool := match l2 with
   | a::q => if raw_id_in a l1 then false else no_intersect l1 q
 end.
 
-(* Fixpoint Inn {A} (n: nat) (a:A) (l: list A) : Prop :=
+Fixpoint Inn {A} (n: nat) (a:A) (l: list A) : Prop :=
   match l with
   | [] => n=0
   | b::q => match n with
-    | 0 => ~(b = a) /\ Inn 0 a q
-    | S m => (b=a /\ Inn m a q) \/ (~(b=a) /\ Inn n a q)
+    | 0 => b <> a /\ Inn 0 a q
+    | S m => (b=a /\ Inn m a q) \/ (b<>a /\ Inn n a q)
     end
-  end. *)
+  end.
 
-Definition equiv {A} (l1 l2: list A) := forall (x:A), In x l1 <-> In x l2. 
+
+Definition equiv {A} (l1 l2: list A) := forall (x:A) n, Inn n x l1 <-> Inn n x l2. 
 
 (* Definition find_seqs_aux (G1 G2: graph): option (graph*graph) := if no_intersect (outputs G2) (inputs G1) then Some (G1, G2) else None. *)
 
@@ -181,7 +182,7 @@ Proof.
   - destruct H as [[|]|]. now left. right. now right. right. now left.
 Qed.
 
-Lemma or_in_nil {A}: forall (G: list A) (x:A), (In x [] \/ In x G) -> In x G.
+(* Lemma or_in_nil {A}: forall (G: list A) (x:A), (In x [] \/ In x G) -> In x G.
 Proof.
   intros G x H. now destruct H.
 Qed.
@@ -195,36 +196,79 @@ Lemma in_or_app_single {A}: forall (l: list A) x a, In x (l++[a]) <-> In x l \/ 
 Proof.
   intros. split. intro. apply in_app_or in H. cbn in H. destruct H as [|[|]]. now left. now right. contradiction.
   - intro H. apply in_or_app. destruct H as [|]. now left. cbn. right. now left.
-Qed.
+Qed. *)
 
-Lemma subgraph_rec_correct_l: forall (G G1 G2 l1 l2: graph) x, In (G1, G2) (subgraph_rec l1 l2 G) -> In x l1 -> In x G1.
+Lemma Inn_app {A}: forall (l1 l2: list A) n m x, Inn n x l1 -> Inn m x l2 -> Inn (n+m) x (l1++l2).
 Proof.
-  induction G as [|a G IHG];cbn;intros G1 G2 l1 l2 x H0 H. destruct H0. 3:apply in_app_or in H0 as [H0|H0].
-  - apply pair_equal_spec in H0 as [H0 H1]. now subst G1.
-  - contradiction.
-  - eapply IHG. apply H0. apply in_or_app. now left. 
-  - eapply IHG. apply H0. trivial.
+  induction l1.
+  * cbn. intros. now subst n.
+  * induction n. induction m.
+    - cbn. intros. destruct H as [H H1]. split; trivial. replace 0 with (0+0) by lia. now apply IHl1.
+    - cbn. intros. right. destruct H as [H H1]. split; trivial. replace (S m) with (0 + S m) by lia. now apply IHl1.
+    - cbn. intros. destruct H as [[H H1] | [H H1]].
+      + left. split; trivial. now apply IHl1.
+      + right. split; trivial. replace (S (n+m)) with (S n + m) by lia. now apply IHl1.
 Qed.
 
-Lemma subgraph_rec_correct_r: forall (G G1 G2 l1 l2: graph) x, In (G1, G2) (subgraph_rec l1 l2 G) -> In x l2 -> In x G2.
+Lemma Inn_exists: forall (l: graph) x, exists n, Inn n x l.
 Proof.
-  induction G as [|a G IHG];cbn;intros G1 G2 l1 l2 x H0 H. destruct H0. 3:apply in_app_or in H0 as [H0|H0].
-  - apply pair_equal_spec in H0 as [H0 H1]. now subst G2.
-  - contradiction.
-  - eapply IHG. apply H0. trivial.
-  - eapply IHG. apply H0. apply in_or_app. now left.
-Qed.
+  intros l x. induction l.
+  - now exists 0.
+  - destruct IHl as [n H]. induction (eqb_bid a.(blk_id) x.(blk_id)). 
+Qed. 
 
-Lemma subgraph_rec_correct_g: forall (G G1 G2 l1 l2: graph) x, In (G1, G2) (subgraph_rec l1 l2 G) -> In x G -> In x G1 \/ In x G2.
+Lemma Inn_app_comm {A}: forall (l1 l2: list A) n x, Inn n x (l1++l2) <-> Inn n x (l2++l1).
 Proof.
-  induction G as [|a G IHG];cbn;intros G1 G2 l1 l2 x H0 H. contradiction. destruct H; apply in_app_or in H0 as [|].
-  - left. eapply subgraph_rec_correct_l. apply H0. subst a. apply in_or_app. right. now left.
-  - right. eapply subgraph_rec_correct_r. apply H0. subst a. apply in_or_app. right. now left.
-  - eapply IHG. now apply H0. trivial.
-  - eapply IHG. now apply H0. trivial.
+
+
+Lemma subgraph_rec_correct_l: forall (G G1 G2 l1 l2: graph) x n m, In (G1, G2) (subgraph_rec l1 l2 G) -> Inn n x l1 -> Inn m x G -> exists n', n <= n' <= n+m /\ Inn n' x G1.
+Proof.
+  induction G as [|a G IHG]; intros G1 G2 l1 l2 x n m H H0 H1.
+  - exists n. split. lia. destruct H.
+    * apply pair_equal_spec in H as []. now subst G1.
+    * destruct H.
+  - induction m. cbn in H. 1:apply in_app_or in H as [|]; eapply IHG; try apply H; trivial. 4: destruct H1 as [[H1 H2] | [H1 H2]]. 
+    * replace n with (n+0) by lia. apply Inn_app. trivial. now destruct H1.
+    * now destruct H1.
+    * now destruct H1.
+    * subst a. cbn in H. apply in_app_or in H as [|]. assert (H': exists n', S n <= n' <= S n + m /\ Inn n' x G1).
+      eapply IHG; try apply H; trivial. 3:assert (H': exists n', n <= n' <= n + m /\ Inn n' x G1). 3:eapply IHG; try apply H; trivial.
+      + replace (S n) with (n + 1) by lia. apply Inn_app. trivial. now left.
+      + destruct H' as [n' [H' H'']]. exists n'. split. lia. trivial.
+      + destruct H' as [n' [H' H'']]. exists n'. split. lia. trivial.
+    * cbn in H. apply in_app_or in H as [|]; eapply IHG; try apply H; trivial.
+      replace n with (n+0) by lia. now apply Inn_app.
 Qed.
 
-Lemma subgraph_rec_correct1_l: forall (G G1 G2 l1 l2: graph) x, In (G1, G2) (subgraph_rec l1 l2 G) -> In x G1 -> In x l1 \/ In x G.
+Lemma subgraph_rec_correct_r: forall (G G1 G2 l1 l2: graph) x n m, In (G1, G2) (subgraph_rec l1 l2 G) -> Inn n x l2 -> Inn m x G -> exists n', n <= n' <= n+m /\ Inn n' x G2.
+Proof.
+  induction G as [|a G IHG]; intros G1 G2 l1 l2 x n m H H0 H1.
+  - exists n. split. lia. destruct H.
+    * apply pair_equal_spec in H as []. now subst G2.
+    * destruct H.
+  - induction m. cbn in H. 1:apply in_app_or in H as [|]; eapply IHG; try apply H; trivial. 4: destruct H1 as [[H1 H2] | [H1 H2]].
+    * now destruct H1.
+    * replace n with (n+0) by lia. apply Inn_app. trivial. now destruct H1.
+    * now destruct H1.
+    * subst a. cbn in H. apply in_app_or in H as [|]. assert (H': exists n', n <= n' <= n + m /\ Inn n' x G2). eapply IHG; try apply H; trivial.
+      2: assert (H': exists n', S n <= n' <= S n + m /\ Inn n' x G2). 2: eapply IHG; try apply H; trivial.
+      + destruct H' as [n' [H' H'']]. exists n'. split. lia. trivial.
+      + replace (S n) with (n + 1) by lia. apply Inn_app. trivial. now left.
+      + destruct H' as [n' [H' H'']]. exists n'. split. lia. trivial.
+    * cbn in H. apply in_app_or in H as [|]; eapply IHG; try apply H; trivial.
+      replace n with (n+0) by lia. now apply Inn_app.
+Qed.
+
+Lemma subgraph_rec_correct_g: forall (G G1 G2 l1 l2: graph), In (G1, G2) (subgraph_rec l1 l2 G) -> equiv (G1++G2) (G++l1++l2).
+Proof.
+  induction G as [|a G IHG];cbn;intros G1 G2 l1 l2 H x n.
+  - destruct H; try contradiction. apply pair_equal_spec in H as []. now subst l1 l2.
+  - rewrite Util.list_cons_app. replace ([a] ++ G ++ l1 ++ l2) with (G++(l1++[a])++l2) by admit. apply IHG.
+Qed.
+
+(* Lemma subgraph_rec_correct1_l: forall (G G1 G2 l1 l2: graph) x n m, In (G1, G2) (subgraph_rec l1 l2 G) -> Inn n x G1 -> Inn m x l1 -> exists n', n <= n' <= n+m /\ Inn n' x G. *)
+
+(* Lemma subgraph_rec_correct1_l: forall (G G1 G2 l1 l2: graph) x n m, In (G1, G2) (subgraph_rec l1 l2 G) -> Inn n x G1 -> In x l1 \/ In x G.
 Proof.
   induction G as [|a G IHG];cbn;intros G1 G2 l1 l2 x H H0. destruct H. 3:apply in_app_or in H as [|].
   - apply pair_equal_spec in H as [H1 H2]. subst G1. now left.
@@ -240,7 +284,8 @@ Proof.
   - contradiction.
   - apply ABC_ACB. left. eapply IHG. apply H. trivial.
   - apply ABC_ABC. rewrite <-in_or_app_single. eapply IHG. apply H. apply H0.
-Qed.
+Qed. *)
+
 
 Lemma subgraphs_correct1: forall (G G1 G2: graph), In (G1,G2) (subgraphs G) -> equiv G (G1++G2).
 Proof.
