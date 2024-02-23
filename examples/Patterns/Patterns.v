@@ -75,7 +75,6 @@ Fixpoint Inn {A} (n: nat) (a:A) (l: list A) : Prop :=
     end
   end.
 
-
 Definition equiv {A} (l1 l2: list A) := forall (x:A) n, Inn n x l1 <-> Inn n x l2. 
 
 (* Definition find_seqs_aux (G1 G2: graph): option (graph*graph) := if no_intersect (outputs G2) (inputs G1) then Some (G1, G2) else None. *)
@@ -210,17 +209,6 @@ Proof.
       + right. split; trivial. replace (S (n+m)) with (S n + m) by lia. now apply IHl1.
 Qed.
 
-Lemma Inn_exists: forall (l: graph) x, exists n, Inn n x l.
-Proof.
-  intros l x. induction l.
-  - now exists 0.
-  - destruct IHl as [n H]. induction (eqb_bid a.(blk_id) x.(blk_id)). 
-Qed. 
-
-Lemma Inn_app_comm {A}: forall (l1 l2: list A) n x, Inn n x (l1++l2) <-> Inn n x (l2++l1).
-Proof.
-
-
 Lemma subgraph_rec_correct_l: forall (G G1 G2 l1 l2: graph) x n m, In (G1, G2) (subgraph_rec l1 l2 G) -> Inn n x l1 -> Inn m x G -> exists n', n <= n' <= n+m /\ Inn n' x G1.
 Proof.
   induction G as [|a G IHG]; intros G1 G2 l1 l2 x n m H H0 H1.
@@ -259,12 +247,12 @@ Proof.
       replace n with (n+0) by lia. now apply Inn_app.
 Qed.
 
-Lemma subgraph_rec_correct_g: forall (G G1 G2 l1 l2: graph), In (G1, G2) (subgraph_rec l1 l2 G) -> equiv (G1++G2) (G++l1++l2).
+(* Lemma subgraph_rec_correct_g: forall (G G1 G2 l1 l2: graph), In (G1, G2) (subgraph_rec l1 l2 G) -> equiv (G1++G2) (G++l1++l2).
 Proof.
   induction G as [|a G IHG];cbn;intros G1 G2 l1 l2 H x n.
   - destruct H; try contradiction. apply pair_equal_spec in H as []. now subst l1 l2.
   - rewrite Util.list_cons_app. replace ([a] ++ G ++ l1 ++ l2) with (G++(l1++[a])++l2) by admit. apply IHG.
-Qed.
+Abort. *)
 
 (* Lemma subgraph_rec_correct1_l: forall (G G1 G2 l1 l2: graph) x n m, In (G1, G2) (subgraph_rec l1 l2 G) -> Inn n x G1 -> Inn m x l1 -> exists n', n <= n' <= n+m /\ Inn n' x G. *)
 
@@ -287,9 +275,9 @@ Proof.
 Qed. *)
 
 
-Lemma subgraphs_correct1: forall (G G1 G2: graph), In (G1,G2) (subgraphs G) -> equiv G (G1++G2).
+(* Lemma subgraphs_correct1: forall (G G1 G2: graph), In (G1,G2) (subgraphs G) -> equiv G (G1++G2).
 Proof.
-  intro G. induction G; intros G1 G2 H;split. now intro. destruct H as [|].
+  intro G. induction G; intros G1 G2 H;split. intro. destruct H as [|].
   - apply pair_equal_spec in H as []. now subst G1 G2.
   - contradiction.
   - intro H0; destruct H0; apply in_or_app. subst a. apply in_app_or in H as [|].
@@ -299,7 +287,7 @@ Proof.
   - intro H0; apply in_app_or in H0 as [];apply or_in_nil.
     * eapply subgraph_rec_correct1_l. apply H. trivial.
     * eapply subgraph_rec_correct1_r. apply H. trivial.
-Qed.
+Abort.
 
 Lemma subgraph_correct2: forall (G G1 G2: graph), equiv G (G1++G2) -> (exists G1' G2', In (G1', G2') (subgraphs G) /\ equiv G1 G1' /\ equiv G2 G2').
 Proof.
@@ -326,7 +314,7 @@ Proof.
   intro G. induction G;cbn;intros G1 G2 x H H0.
   - contradiction.
   -  
-Abort.
+Abort. *)
 
 (* Correction of no_intersect *)
 

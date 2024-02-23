@@ -35,6 +35,11 @@ Proof.
   apply string_dec. apply Z.eq_dec. apply Z.eq_dec.
 Qed.
 
+Theorem eq_eq: forall x y: t, eq x y <-> x=y.
+Proof.
+  split; induction x,y; intro H; now destruct H.
+Qed.
+
 Definition lt b b': Prop :=
   match b, b' with
     | Name s, Name s' => StringOT.lt s s'
@@ -80,5 +85,3 @@ Proof.
 Qed.
 
 End IdOT.
-
-Print IdOT.
