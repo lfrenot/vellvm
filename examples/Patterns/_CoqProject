@@ -19,6 +19,6 @@
 # Imp2Cvir.v
 # Semantics.v
 
-Patterns.v
 IdModule.v
-Patterns_Set.v
+Patterns.v
+Patterns_old.v
