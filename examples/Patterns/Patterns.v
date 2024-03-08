@@ -9,8 +9,6 @@ Import ListNotations.
 Module Map := FMapAVL.Make(IdOT).
 
 Module MapF := FMapFacts.OrdProperties Map.
-(* Import MapF.P. *)
-(* Import MapF.P.F. *)
 
 Notation blk := (block dtyp).
 Notation bid := block_id.
@@ -35,6 +33,14 @@ Proof.
   intros b g Hwf id a H. 
   apply MapF.P.F.remove_mapsto_iff in H as [ ]. now apply Hwf.
 Qed.
+
+Lemma wf_mcfg_trans: forall G G', Map.Equal G G' -> wf_mcfg G -> wf_mcfg G'.
+Proof.
+Admitted.
+
+Lemma wf_mcfg_part: forall G G1 G2, MapF.P.Partition G G1 G2 -> wf_mcfg G -> wf_mcfg G1 /\  wf_mcfg G2.
+Proof.
+Admitted.
 
 (* Pattern definition *)
 
@@ -94,6 +100,10 @@ end.
 Definition is_head (G G':mcfg) (b:blk) :=
   Map.Equal (Map.remove b.(blk_id) G) G' /\ wf_mcfg G' /\
   Map.MapsTo b.(blk_id) b G /\ Map.Empty (predecessors b.(blk_id) G).
+
+Theorem is_head_trans: forall G G' H H' A, Map.Equal G H -> Map.Equal G' H' -> is_head G G' A <-> is_head H H' A.
+Proof.
+Admitted.
 
 Lemma head_correct: forall G G' b, wf_mcfg G -> (In (b, G') (find_heads G) <-> is_head G G' b).
 Admitted.
@@ -295,6 +305,25 @@ Proof.
       apply H1.
 Qed.
 
+Lemma MapsTo_Empty: forall (G:mcfg), (forall k e, ~Map.MapsTo k e G) -> Map.Empty G.
+Proof.
+  intros. apply Eempty_Map. apply MapF.P.F.Equal_mapsto_iff.
+  intros. split; intro H'; contradict H'. apply H. intro H0. eapply MapF.P.F.empty_mapsto_iff. apply H0.
+Qed.
+
+Lemma predecessors_in: forall G id id', Map.In id (predecessors id' G) -> Map.In id G.
+Proof.
+Admitted.
+
+Lemma in_mapsto_iff: forall (G:mcfg) id, Map.In id G <-> (exists B, Map.MapsTo id B G).
+Proof.
+Admitted.
+
+Lemma predecessors_aux_empty_acc: forall G id id' acc,
+  Map.In id (Map.fold (predecessors_aux id') G (Map.empty blk)) -> Map.In id (Map.fold (predecessors_aux id') G acc).
+Proof.
+Admitted.
+
 Lemma add_predecessor: forall (A B: blk) G, wf_mcfg G -> Map.MapsTo (blk_id A) A G ->
   Map.Empty (predecessors B.(blk_id) (Map.remove A.(blk_id) G)) -> successors A = [B.(blk_id)] ->
   Map.Equal (predecessors B.(blk_id) G) (Map.add A.(blk_id) A (Map.empty _)).
@@ -323,58 +352,117 @@ Proof.
   auto. apply Proper_predecessor_aux. apply transpose_neqkey_predecessor_aux.
 Qed.
 
-Theorem DoubleHead_correct: forall A B G' G,
-  wf_mcfg G -> In (A,(B,G')) (MatchAll DoubleHead G) ->
-  successors A = [B.(blk_id)] /\ Map.Equal (predecessors B.(blk_id) G) (Map.add A.(blk_id) A (Map.empty _)) /\
-  Map.Equal (Map.add A.(blk_id) A (Map.add B.(blk_id) B G')) G /\ wf_mcfg G'.
+Definition DoubleHead_sem A B G G' := let G'' := (Map.add B.(blk_id) B G') in
+  successors A = [B.(blk_id)] /\
+  Map.Equal (predecessors B.(blk_id) G) (Map.add A.(blk_id) A (Map.empty _)) /\
+  Map.Equal (Map.add A.(blk_id) A G'') G /\
+  is_head G G'' A /\ is_head G'' G' B.
+
+Theorem DoubleHead_correct: forall A B G G',
+  wf_mcfg G -> In (A,(B,G')) (MatchAll DoubleHead G) <->
+  DoubleHead_sem A B G G'.
 Proof.
-  unfold DoubleHead.
-  intros A B G' G Hwf H.
-  apply pat_when_correct in H as [H HWhen].
-  apply pat_head_correct in H as [G2 [[HRA [HwfA [HMA HPA]]] H]]; trivial.
-  apply pat_head_correct in H as [G3 [[HRB [HwfB [HMB HPB]]] H]]; trivial.
-  apply pat_graph_correct in H. destruct H.
-  apply is_seq_correct in HWhen as [Hsucc HPrec].
-  repeat split; trivial.
-  - apply add_predecessor; trivial. eapply MapF.P.F.Empty_m. unfold predecessors. eapply MapF.P.fold_Equal.
-    * auto.
-    * apply Proper_predecessor_aux.
-    * apply transpose_neqkey_predecessor_aux.
-    * apply HRA.
-    * trivial.    
-  - apply add_remove_elim2. trivial.
+  intros A B G G' Hwf. unfold DoubleHead. split.
+  - intro H.
+    apply pat_when_correct in H as [H HWhen].
+    apply pat_head_correct in H as [G2 [[HRA [HwfA [HMA HPA]]] H]]; trivial.
+    apply pat_head_correct in H as [G3 [[HRB [HwfB [HMB HPB]]] H]]; trivial.
+    apply pat_graph_correct in H. destruct H.
+    apply is_seq_correct in HWhen as [Hsucc HPrec].
+    repeat split; trivial.
+    * apply add_predecessor; trivial. eapply MapF.P.F.Empty_m. unfold predecessors. eapply MapF.P.fold_Equal.
+      + auto.
+      + apply Proper_predecessor_aux.
+      + apply transpose_neqkey_predecessor_aux.
+      + apply HRA.
+      + trivial.
+    * apply add_remove_elim2. trivial.
+      eapply MapF.P.F.Equal_trans.
+      apply HRA.
+      apply MapF.P.F.Equal_sym.
+      now apply add_remove_elim2.
+    * eapply MapF.P.F.Equal_trans. apply HRA. apply MapF.P.F.Equal_sym. now apply add_remove_elim2.
+    * eapply wf_mcfg_trans. 2:apply HwfA. apply MapF.P.F.Equal_sym. now apply add_remove_elim2.
+    * eapply MapF.P.F.Equal_trans. 2:apply HRB. apply MapF.P.F.remove_m. apply IdOT.eq_refl. now apply add_remove_elim2.
+    * apply Map.add_1. apply IdOT.eq_refl.
+    * eapply MapF.P.F.Empty_m. 2: apply HPB. unfold predecessors. apply MapF.fold_Equal. auto. apply Proper_predecessor_aux.
+      now apply add_remove_elim2.
+  - intros [Hs [Hp [He [HhA HhB]]]]. unfold DoubleHead.
+    apply pat_when_correct. split. apply pat_head_correct; trivial.
+    exists (Map.add (blk_id B) B G'). split. trivial.
+    apply pat_head_correct. apply add_wf_mcfg. destruct HhB as [HB1 [HB2 [HB3 HB4]]]. trivial.
+    exists G'. split. trivial. now left.
+    unfold is_seq. rewrite Hs. destruct IdOT.eq_dec as [e|n]. 2: { contradict n. apply IdOT.eq_refl. }
+    destruct HhB as [He' [Hwf' [_ HemB]]].
+    apply MapF.P.F.is_empty_iff.
+    apply Eempty_Map. apply Eempty_Map in HemB.
+    eapply MapF.P.F.Equal_trans. 2:apply HemB.
+    unfold predecessors. apply MapF.P.F.Equal_sym.
+    assert (H: Map.Equal (Map.fold (predecessors_aux (blk_id B)) (Map.add (blk_id B) B G') (Map.empty blk)) ((predecessors_aux B.(blk_id)) B.(blk_id) B (Map.fold (predecessors_aux B.(blk_id)) G' (Map.empty blk)))).
+    {
+      apply MapF.P.fold_add. auto. apply Proper_predecessor_aux. apply transpose_neqkey_predecessor_aux.
+      rewrite MapF.P.F.In_m. apply Map.remove_1. apply IdOT.eq_refl. apply IdOT.eq_refl. apply MapF.P.F.Equal_sym. apply He'.
+    }
     eapply MapF.P.F.Equal_trans.
-    apply HRA.
-    apply MapF.P.F.Equal_sym.
-    now apply add_remove_elim2.
+    apply H.
+    assert (H': Map.Equal (predecessors_aux (blk_id B) (blk_id B) B (Map.fold (predecessors_aux (blk_id B)) G' (Map.empty blk))) (Map.empty blk)). { eapply MapF.P.F.Equal_trans. apply MapF.P.F.Equal_sym. apply H. trivial. }
+    assert (H2: is_predecessor (blk_id B) B = false). remember (is_predecessor (blk_id B) B) as b. induction b; trivial.
+    contradict H'. unfold predecessors_aux. rewrite <-Heqb. rewrite <-Eempty_Map.
+    intro H0. eapply map_empty_mapsto. apply H0. apply Map.add_1. apply IdOT.eq_refl.
+    unfold predecessors_aux. rewrite H2. apply MapF.P.F.Equal_refl.
 Qed.
 
+Definition BlockFusion_sem A B G G' G'' := let G2 := (Map.add A.(blk_id) A (Map.add B.(blk_id) B G')) in
+  Map.Equal (predecessors B.(blk_id) G) (Map.add A.(blk_id) A (Map.empty _)) /\
+  MapF.P.Partition G G'' G2 /\ DoubleHead_sem A B G2 G'.
+
 Theorem BlockFusion_correct: forall A B G G' G'',
-  wf_mcfg G -> In (G'', (A, (B, G'))) (MatchAll BlockFusion G) ->
-  successors A = [B.(blk_id)] /\ Map.Equal (predecessors B.(blk_id) G) (Map.add A.(blk_id) A (Map.empty _)) /\
-  MapF.P.Partition G G'' (Map.add A.(blk_id) A (Map.add B.(blk_id) B G')) /\
-  wf_mcfg G'' /\ wf_mcfg G'.
+  wf_mcfg G -> In (G'', (A, (B, G'))) (MatchAll BlockFusion G) <-> BlockFusion_sem A B G G' G''.
 Proof.
   unfold BlockFusion.
-  intros A B G G' G'' Hwf H.
-  apply pat_when_correct in H as [H HWhen]. unfold BlockFusion_aux in HWhen.
-  apply pat_focus_correct in H as [G0 [[HPart [Hwf'' Hwf0]] H]]; trivial.
-  apply DoubleHead_correct in H as [HS [HP [HG' Hwf']]]; trivial.
-  split; trivial. split. 2:split. 3:split; trivial.
-  - eapply MapF.P.F.Equal_trans.
-    assert (Map.Equal (Map.fold (predecessors_aux (blk_id B)) G (Map.empty blk)) (Map.fold (predecessors_aux (blk_id B)) G0 (Map.fold (predecessors_aux (blk_id B)) G'' (Map.empty blk)) )).
-    eapply MapF.P.Partition_fold.
-    * auto.
-    * apply Proper_predecessor_aux.
-    * apply transpose_neqkey_predecessor_aux.
-    * now apply MapF.P.Partition_sym.
-    * apply H.
-    * eapply MapF.P.F.Equal_trans. eapply MapF.P.fold_Equal2. auto. apply Proper_predecessor_aux.
-      apply transpose_neqkey_predecessor_aux. apply MapF.P.F.Equal_refl. apply Eempty_Map. now apply Map.is_empty_2.
-      trivial.
-  - eapply MapF.P.Partition_m.
-    * apply MapF.P.F.Equal_refl.
-    * apply MapF.P.F.Equal_refl.
-    * apply HG'.
-    * trivial.
+  intros A B G G' G'' Hwf. split.
+  - intro H. unfold BlockFusion_sem.
+    apply pat_when_correct in H as [H HWhen]. unfold BlockFusion_aux in HWhen.
+    apply pat_focus_correct in H as [G0 [[HPart [Hwf'' Hwf0]] H]]; trivial.
+    apply DoubleHead_correct in H as [HS [HP [HG0 [HhA HhB]]]]; trivial.
+    remember (Map.add (blk_id A) A (Map.add (blk_id B) B G')) as G2. 
+    split. 2:split. 3:split; trivial. 3:split. 4:split. 5:split;trivial.
+    * unfold predecessors. assert (H: Map.Equal (Map.fold (predecessors_aux (blk_id B)) G (Map.empty blk)) (Map.fold (predecessors_aux (blk_id B)) G0 (Map.fold (predecessors_aux (blk_id B)) G'' (Map.empty _)))).
+      {
+        apply MapF.P.Partition_fold. auto. apply Proper_predecessor_aux. apply transpose_neqkey_predecessor_aux.
+        now apply MapF.P.Partition_sym.
+      }
+      eapply MapF.P.F.Equal_trans. apply H.
+      eapply MapF.P.F.Equal_trans. 2:apply HP.
+      unfold predecessors. eapply MapF.P.fold_Equal2. auto.
+      apply Proper_predecessor_aux. apply transpose_neqkey_predecessor_aux.
+      apply MapF.P.F.Equal_refl. apply Eempty_Map. now apply Map.is_empty_2.
+    * eapply MapF.P.Partition_m. apply MapF.P.F.Equal_refl. apply MapF.P.F.Equal_refl. apply HG0. trivial.
+    * eapply MapF.P.F.Equal_trans. 2:apply HP. unfold predecessors. apply MapF.P.fold_Equal;auto.
+      apply Proper_predecessor_aux. apply transpose_neqkey_predecessor_aux.
+    * rewrite HeqG2. apply MapF.P.F.Equal_refl.
+    * eapply is_head_trans. apply HG0. apply MapF.P.F.Equal_refl. trivial.
+  - intros [Hpred [Hpart HDouble]]. remember (Map.add (blk_id A) A (Map.add (blk_id B) B G')) as G2.
+    apply pat_when_correct. split.
+    apply pat_focus_correct; trivial. exists G2. split. 2: apply DoubleHead_correct;trivial.
+    destruct HDouble as [HSucc [HPred2 [_ [HhA HhB]]]].
+    split; trivial. eapply wf_mcfg_part. apply Hpart. trivial. eapply wf_mcfg_part. apply Hpart. trivial.
+    unfold BlockFusion_aux.
+    apply Map.is_empty_1. apply MapsTo_Empty. intros k e H.
+    induction (IdOT.eq_dec k A.(blk_id)) as [a|a].
+    * apply IdOT.eq_eq in a. subst k.
+      destruct Hpart as [HD HM].
+      eapply HD. split. 2:{ rewrite HeqG2. apply MapF.P.F.add_in_iff. left. apply IdOT.eq_refl. }
+      eapply predecessors_in. apply in_mapsto_iff. exists e. apply H.
+    * destruct HDouble as [Hsucc [Hpred2 HDouble]].
+      assert (Hn: Map.In k (predecessors (blk_id B) G)).
+      eapply MapF.P.F.In_m. apply IdOT.eq_refl. 
+      assert (Heq: Map.Equal (predecessors (blk_id B) G)
+      (Map.fold (predecessors_aux (B.(blk_id))) G'' (Map.fold (predecessors_aux (B.(blk_id))) G2 (Map.empty _)))).
+      unfold predecessors.
+      apply MapF.P.Partition_fold. auto. apply Proper_predecessor_aux. apply transpose_neqkey_predecessor_aux.
+      trivial. apply Heq. apply predecessors_aux_empty_acc. apply in_mapsto_iff. now exists e.
+      eapply MapF.P.F.empty_in_iff.
+      eapply MapF.P.F.add_neq_in_iff. apply IdOT.neq_sym. apply a.
+      eapply MapF.P.F.In_m. apply IdOT.eq_refl. apply MapF.P.F.Equal_sym. apply Hpred. trivial. 
 Qed.
