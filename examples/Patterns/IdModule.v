@@ -24,6 +24,11 @@ Proof.
     induction x, y; cbn; intro H; now destruct H.
 Qed.
 
+Theorem neq_sym: forall x y: t, ~eq x y -> ~eq y x.
+Proof.
+  induction x, y; cbn; intro H; auto.
+Qed.
+
 Theorem eq_trans : forall x y z : t, eq x y -> eq y z -> eq x z.
 Proof.
     induction x,y,z; cbn; intros H H'; now destruct H, H'.

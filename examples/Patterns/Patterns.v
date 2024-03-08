@@ -168,19 +168,23 @@ Qed.
 
 (* Block Fusion Pattern *)
 
-Definition is_seq (A B: blk) (G: mcfg) := match successors A with
-  | [x] =>  if IdOT.eq_dec x B.(blk_id)
-            then Map.is_empty (predecessors B.(blk_id) G)
-            else false
-  | _ => false
+Definition is_seq (X: blk*(blk*mcfg)) := match X with |(A,(B,G)) => match successors A with
+    | [x] =>  if IdOT.eq_dec x B.(blk_id)
+              then Map.is_empty (predecessors B.(blk_id) G)
+              else false
+    | _ => false
+  end
 end.
 
-Definition is_seq_sep X := match X with |(A,(B,G)) => is_seq A B G end.
+Definition DoubleHead := When _ (Head _ (Head _ Graph)) (fun x => is_seq x).
 
-Definition DoubleHead := When _ (Head _ (Head _ Graph)) (fun x => is_seq_sep x).
+Definition BlockFusion_aux (x: (mcfg*(blk*(blk*mcfg)))) :=
+  match x with | (G,(_,(B,_))) => Map.is_empty (predecessors B.(blk_id) G) end.
+
+Definition BlockFusion := When _ (Focus _ DoubleHead) (fun x => BlockFusion_aux x).
 
 Lemma is_seq_correct:
-  forall A B G, is_seq A B G = true ->
+  forall A B G, is_seq (A ,(B ,G)) = true ->
   successors A = [B.(blk_id)] /\ Map.Empty (predecessors B.(blk_id) G).
 Proof.
   unfold is_seq. intros A B G H.
@@ -217,21 +221,107 @@ Qed.
 
 Lemma Proper_predecessor_aux: forall id, Proper (IdOT.eq ==> eq ==> Map.Equal ==> Map.Equal) (predecessors_aux id).
 Proof.
-Admitted.
+  intros id idB idB' H B B' H0 x1 y1 H1 y2. subst B'. apply IdOT.eq_eq in H. subst idB'.
+  unfold predecessors_aux. remember (is_predecessor id B) as b. induction b.
+  - apply MapF.P.F.find_m_Proper. apply IdOT.eq_refl. apply MapF.P.F.add_m_Proper; trivial. apply IdOT.eq_refl.
+  - apply MapF.P.F.find_m_Proper; trivial. apply IdOT.eq_refl.
+Qed.
+
+Lemma swap_add:
+  forall id id' B B' (G : mcfg), ~ IdOT.eq id id' ->
+  Map.Equal (Map.add id B (Map.add id' B' G)) (Map.add id' B' (Map.add id B G)).
+Proof.
+  intros id id' B B' G Hn.
+  apply MapF.P.F.Equal_mapsto_iff. intros k e. induction (IdOT.eq_dec k id) as [b|b]. 2: induction (IdOT.eq_dec k id') as [b'|b'].
+  - apply IdOT.eq_eq in b. subst k.
+    split; intro H. assert (He: B=e).
+    apply MapF.P.F.add_mapsto_iff in H as [[H1 H2]|[H1 H2]]. trivial. contradict H1. apply IdOT.eq_refl. subst e.
+    apply Map.add_2.
+      * now apply IdOT.neq_sym. 
+      * apply MapF.P.F.add_mapsto_iff. left.
+        apply MapF.P.F.add_mapsto_iff in H as [|[H1 H2]]. trivial. contradict H1. apply IdOT.eq_refl.
+      * assert (He: B=e).
+        apply Map.add_3 in H. apply MapF.P.F.add_mapsto_iff in H as [[H1 H2]|[H1 H2]].
+        trivial. contradict H1. apply IdOT.eq_refl.
+        now apply IdOT.neq_sym.
+        subst e.
+        apply Map.add_1. apply IdOT.eq_refl.
+  - apply IdOT.eq_eq in b'. subst k.
+    split; intro H.
+    * assert (He: B'=e).
+      apply Map.add_3 in H. apply MapF.P.F.add_mapsto_iff in H as [[H1 H2]|[H1 H2]].
+      trivial. contradict H1. apply IdOT.eq_refl. trivial.
+      subst e.
+      apply Map.add_1. apply IdOT.eq_refl.
+    * assert (He: B'=e). apply MapF.P.F.add_mapsto_iff in H as [[H1 H2]|[H1 H2]]. trivial. contradict H1. apply IdOT.eq_refl. subst e.
+      apply Map.add_2. trivial. apply Map.add_1. apply IdOT.eq_refl.
+  - split; intro H.
+    * assert (H': Map.MapsTo k e G).
+      eapply Map.add_3. apply IdOT.neq_sym. apply b'.
+      eapply Map.add_3. apply IdOT.neq_sym. apply b. apply H.
+      apply Map.add_2. now apply IdOT.neq_sym. apply Map.add_2. now apply IdOT.neq_sym. trivial.
+    * assert (H': Map.MapsTo k e G).
+      eapply Map.add_3. apply IdOT.neq_sym. apply b.
+      eapply Map.add_3. apply IdOT.neq_sym. apply b'. apply H.
+      apply Map.add_2. now apply IdOT.neq_sym. apply Map.add_2. now apply IdOT.neq_sym. trivial.
+Qed.
 
 Lemma transpose_neqkey_predecessor_aux: forall id, MapF.P.transpose_neqkey Map.Equal (predecessors_aux id).
 Proof.
-Admitted.
-
-Lemma add_predecessor: forall (A B: blk) G, wf_mcfg G ->
-  Map.Empty (predecessors B.(blk_id) (Map.remove A.(blk_id) G)) -> successors A = [B.(blk_id)] ->
-  Map.Equal (predecessors B.(blk_id) G) (Map.add A.(blk_id) A (Map.empty _)).
-Proof.
-Admitted.
+  intros id idB idB' B B' G H id'. assert (Hn: ~IdOT.eq idB idB') by apply H. clear H.
+  unfold predecessors_aux. remember (is_predecessor id B) as b. remember (is_predecessor id B') as b'.
+  induction b, b'; trivial.
+  apply MapF.P.F.find_m_Proper. apply IdOT.eq_refl. apply swap_add. apply Hn.
+Qed.
 
 Lemma Eempty_Map: forall (G: mcfg), Map.Empty G <-> Map.Equal G (Map.empty _).
 Proof.
-Admitted.
+  apply MapF.P.map_induction_bis.
+  - intros. split; intro H'.
+    eapply MapF.P.F.Equal_trans. apply MapF.P.F.Equal_sym. apply H. apply H0.
+    eapply MapF.P.F.Empty_m. apply H. trivial.
+    eapply MapF.P.F.Empty_m. apply MapF.P.F.Equal_sym. apply H. apply H0.
+    eapply MapF.P.F.Equal_trans. apply H. trivial.
+  - split; intro. apply MapF.P.F.Equal_refl. apply Map.empty_1.
+  - split; intro H'.
+    * assert (H1: Map.MapsTo x e (Map.add x e m)).
+      apply MapF.P.F.add_mapsto_iff. left. split; trivial. apply IdOT.eq_refl.
+      contradict H1. now apply map_empty_mapsto.
+    * assert (H1: Map.MapsTo x e (Map.add x e m)).
+      apply MapF.P.F.add_mapsto_iff. left. split; trivial. apply IdOT.eq_refl.
+      contradict H'.
+      intro. eapply MapF.P.F.empty_mapsto_iff.
+      eapply MapF.P.F.Equal_mapsto_iff. apply MapF.P.F.Equal_sym. apply H2.
+      apply H1.
+Qed.
+
+Lemma add_predecessor: forall (A B: blk) G, wf_mcfg G -> Map.MapsTo (blk_id A) A G ->
+  Map.Empty (predecessors B.(blk_id) (Map.remove A.(blk_id) G)) -> successors A = [B.(blk_id)] ->
+  Map.Equal (predecessors B.(blk_id) G) (Map.add A.(blk_id) A (Map.empty _)).
+Proof.
+  intros. remember (Map.remove (elt:=blk) (blk_id A) G) as G'.
+  assert (H': Map.Equal (Map.add A.(blk_id) A G') G).
+  {
+    apply add_remove_elim2. trivial. rewrite HeqG'. apply MapF.P.F.Equal_refl.
+  }
+  unfold predecessors. erewrite MapF.P.fold_Equal. 5: apply MapF.P.F.Equal_sym in H'; apply H'.
+  {
+    eapply MapF.P.F.Equal_trans.
+      - assert (H3: Map.Equal
+                (Map.fold (predecessors_aux (blk_id B)) (Map.add (blk_id A) A G') (Map.empty blk))
+                (predecessors_aux (blk_id B) (blk_id A) A (Map.fold (predecessors_aux (blk_id B)) G' (Map.empty blk)))).
+      {
+        apply MapF.P.fold_add. auto. apply Proper_predecessor_aux. apply transpose_neqkey_predecessor_aux.
+        rewrite HeqG'. apply Map.remove_1. apply IdOT.eq_refl.
+      }
+      apply H3.
+    - eapply MapF.P.F.Equal_trans.
+      * apply Proper_predecessor_aux. apply IdOT.eq_refl. reflexivity. apply Eempty_Map. apply H1.
+      * unfold predecessors_aux. unfold is_predecessor. rewrite H2. cbn.
+        induction (raw_id_eq_dec (blk_id B) (blk_id B)). apply MapF.P.F.Equal_refl. contradiction.
+  }
+  auto. apply Proper_predecessor_aux. apply transpose_neqkey_predecessor_aux.
+Qed.
 
 Theorem DoubleHead_correct: forall A B G' G,
   wf_mcfg G -> In (A,(B,G')) (MatchAll DoubleHead G) ->
@@ -258,11 +348,6 @@ Proof.
     apply MapF.P.F.Equal_sym.
     now apply add_remove_elim2.
 Qed.
-
-Definition BlockFusion_aux (x: (mcfg*(blk*(blk*mcfg)))) :=
-  match x with | (G,(_,(B,_))) => Map.is_empty (predecessors B.(blk_id) G) end.
-
-Definition BlockFusion := When _ (Focus _ DoubleHead) (fun x => BlockFusion_aux x).
 
 Theorem BlockFusion_correct: forall A B G G' G'',
   wf_mcfg G -> In (G'', (A, (B, G'))) (MatchAll BlockFusion G) ->
