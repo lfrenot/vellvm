@@ -36,11 +36,16 @@ Qed.
 
 Lemma wf_mcfg_trans: forall G G', Map.Equal G G' -> wf_mcfg G -> wf_mcfg G'.
 Proof.
-Admitted.
+  intros G G' He Hwf. intros id b Hm.
+  apply Hwf. eapply MapF.P.F.Equal_mapsto_iff.
+  apply He. trivial.
+Qed.
 
-Lemma wf_mcfg_part: forall G G1 G2, MapF.P.Partition G G1 G2 -> wf_mcfg G -> wf_mcfg G1 /\  wf_mcfg G2.
+Lemma wf_mcfg_part: forall G G1 G2, MapF.P.Partition G G1 G2 -> wf_mcfg G -> wf_mcfg G1 /\ wf_mcfg G2.
 Proof.
-Admitted.
+  intros G G1 G2 [Hd Hs] Hwf.
+  split; intros id b Hm; apply Hwf; apply Hs; auto.
+Qed.
 
 (* Pattern definition *)
 
@@ -101,9 +106,102 @@ Definition is_head (G G':mcfg) (b:blk) :=
   Map.Equal (Map.remove b.(blk_id) G) G' /\ wf_mcfg G' /\
   Map.MapsTo b.(blk_id) b G /\ Map.Empty (predecessors b.(blk_id) G).
 
-Theorem is_head_trans: forall G G' H H' A, Map.Equal G H -> Map.Equal G' H' -> is_head G G' A <-> is_head H H' A.
+Lemma swap_add:
+  forall id id' B B' (G : mcfg), ~ IdOT.eq id id' ->
+  Map.Equal (Map.add id B (Map.add id' B' G)) (Map.add id' B' (Map.add id B G)).
 Proof.
-Admitted.
+  intros id id' B B' G Hn.
+  apply MapF.P.F.Equal_mapsto_iff. intros k e. induction (IdOT.eq_dec k id) as [b|b]. 2: induction (IdOT.eq_dec k id') as [b'|b'].
+  - apply IdOT.eq_eq in b. subst k.
+    split; intro H. assert (He: B=e).
+    apply MapF.P.F.add_mapsto_iff in H as [[H1 H2]|[H1 H2]]. trivial. contradict H1. apply IdOT.eq_refl. subst e.
+    apply Map.add_2.
+      * now apply IdOT.neq_sym. 
+      * apply MapF.P.F.add_mapsto_iff. left.
+        apply MapF.P.F.add_mapsto_iff in H as [|[H1 H2]]. trivial. contradict H1. apply IdOT.eq_refl.
+      * assert (He: B=e).
+        apply Map.add_3 in H. apply MapF.P.F.add_mapsto_iff in H as [[H1 H2]|[H1 H2]].
+        trivial. contradict H1. apply IdOT.eq_refl.
+        now apply IdOT.neq_sym.
+        subst e.
+        apply Map.add_1. apply IdOT.eq_refl.
+  - apply IdOT.eq_eq in b'. subst k.
+    split; intro H.
+    * assert (He: B'=e).
+      apply Map.add_3 in H. apply MapF.P.F.add_mapsto_iff in H as [[H1 H2]|[H1 H2]].
+      trivial. contradict H1. apply IdOT.eq_refl. trivial.
+      subst e.
+      apply Map.add_1. apply IdOT.eq_refl.
+    * assert (He: B'=e). apply MapF.P.F.add_mapsto_iff in H as [[H1 H2]|[H1 H2]]. trivial. contradict H1. apply IdOT.eq_refl. subst e.
+      apply Map.add_2. trivial. apply Map.add_1. apply IdOT.eq_refl.
+  - split; intro H.
+    * assert (H': Map.MapsTo k e G).
+      eapply Map.add_3. apply IdOT.neq_sym. apply b'.
+      eapply Map.add_3. apply IdOT.neq_sym. apply b. apply H.
+      apply Map.add_2. now apply IdOT.neq_sym. apply Map.add_2. now apply IdOT.neq_sym. trivial.
+    * assert (H': Map.MapsTo k e G).
+      eapply Map.add_3. apply IdOT.neq_sym. apply b.
+      eapply Map.add_3. apply IdOT.neq_sym. apply b'. apply H.
+      apply Map.add_2. now apply IdOT.neq_sym. apply Map.add_2. now apply IdOT.neq_sym. trivial.
+Qed.
+
+Lemma map_empty_mapsto: forall (G:mcfg) id b, Map.Empty G -> ~Map.MapsTo id b G.
+Proof.
+  intros G id b H H0. eapply InA_nil. apply MapF.P.elements_Empty in H.
+  rewrite <-H. apply Map.elements_1. apply H0.
+Qed.
+
+Lemma Proper_predecessor_aux: forall id, Proper (IdOT.eq ==> eq ==> Map.Equal ==> Map.Equal) (predecessors_aux id).
+Proof.
+  intros id idB idB' H B B' H0 x1 y1 H1 y2. subst B'. apply IdOT.eq_eq in H. subst idB'.
+  unfold predecessors_aux. remember (is_predecessor id B) as b. induction b.
+  - apply MapF.P.F.find_m_Proper. apply IdOT.eq_refl. apply MapF.P.F.add_m_Proper; trivial. apply IdOT.eq_refl.
+  - apply MapF.P.F.find_m_Proper; trivial. apply IdOT.eq_refl.
+Qed.
+
+Lemma transpose_neqkey_predecessor_aux: forall id, MapF.P.transpose_neqkey Map.Equal (predecessors_aux id).
+Proof.
+  intros id idB idB' B B' G H id'. assert (Hn: ~IdOT.eq idB idB') by apply H. clear H.
+  unfold predecessors_aux. remember (is_predecessor id B) as b. remember (is_predecessor id B') as b'.
+  induction b, b'; trivial.
+  apply MapF.P.F.find_m_Proper. apply IdOT.eq_refl. apply swap_add. apply Hn.
+Qed.
+
+Lemma Eempty_Map: forall (G: mcfg), Map.Empty G <-> Map.Equal G (Map.empty _).
+Proof.
+  apply MapF.P.map_induction_bis.
+  - intros. split; intro H'.
+    eapply MapF.P.F.Equal_trans. apply MapF.P.F.Equal_sym. apply H. apply H0.
+    eapply MapF.P.F.Empty_m. apply H. trivial.
+    eapply MapF.P.F.Empty_m. apply MapF.P.F.Equal_sym. apply H. apply H0.
+    eapply MapF.P.F.Equal_trans. apply H. trivial.
+  - split; intro. apply MapF.P.F.Equal_refl. apply Map.empty_1.
+  - split; intro H'.
+    * assert (H1: Map.MapsTo x e (Map.add x e m)).
+      apply MapF.P.F.add_mapsto_iff. left. split; trivial. apply IdOT.eq_refl.
+      contradict H1. now apply map_empty_mapsto.
+    * assert (H1: Map.MapsTo x e (Map.add x e m)).
+      apply MapF.P.F.add_mapsto_iff. left. split; trivial. apply IdOT.eq_refl.
+      contradict H'.
+      intro. eapply MapF.P.F.empty_mapsto_iff.
+      eapply MapF.P.F.Equal_mapsto_iff. apply MapF.P.F.Equal_sym. apply H2.
+      apply H1.
+Qed.
+
+Theorem is_head_trans: forall G G' H H' A, Map.Equal G H -> Map.Equal G' H' -> is_head G G' A -> is_head H H' A.
+Proof.
+  unfold is_head. intros G G' H H' B He He' [Her [Hwf' [Hm Hp]]]. repeat split.
+  - eapply MapF.P.F.Equal_trans.
+    * eapply MapF.P.F.remove_m. apply IdOT.eq_refl. apply MapF.P.F.Equal_sym. apply He.
+    * eapply MapF.P.F.Equal_trans. apply Her. trivial.
+  - eapply wf_mcfg_trans. apply He'. trivial.
+  - eapply MapF.P.F.MapsTo_m. apply IdOT.eq_refl. reflexivity. apply MapF.P.F.Equal_sym. apply He. trivial.
+  - apply Eempty_Map. eapply MapF.P.F.Equal_trans. 2: apply Eempty_Map, Hp.
+    unfold predecessors. apply MapF.fold_Equal.
+    * auto.
+    * apply Proper_predecessor_aux.
+    * now apply MapF.P.F.Equal_sym.
+Qed.  
 
 Lemma head_correct: forall G G' b, wf_mcfg G -> (In (b, G') (find_heads G) <-> is_head G G' b).
 Admitted.
@@ -119,12 +217,6 @@ Admitted.
 
 Theorem pat_graph_correct: forall G G', In G' (MatchAll Graph G) -> G' = G. Proof.
   cbn. intros G G' H. destruct H; now destruct H.
-Qed.
-
-Lemma map_empty_mapsto: forall (G:mcfg) id b, Map.Empty G -> ~Map.MapsTo id b G.
-Proof.
-  intros G id b H H0. eapply InA_nil. apply MapF.P.elements_Empty in H.
-  rewrite <-H. apply Map.elements_1. apply H0.
 Qed.
 
 Lemma in_flat_map_r {A B C}:
@@ -229,98 +321,26 @@ Proof.
   now apply MapF.P.F.Equal_sym. trivial.
 Qed.
 
-Lemma Proper_predecessor_aux: forall id, Proper (IdOT.eq ==> eq ==> Map.Equal ==> Map.Equal) (predecessors_aux id).
-Proof.
-  intros id idB idB' H B B' H0 x1 y1 H1 y2. subst B'. apply IdOT.eq_eq in H. subst idB'.
-  unfold predecessors_aux. remember (is_predecessor id B) as b. induction b.
-  - apply MapF.P.F.find_m_Proper. apply IdOT.eq_refl. apply MapF.P.F.add_m_Proper; trivial. apply IdOT.eq_refl.
-  - apply MapF.P.F.find_m_Proper; trivial. apply IdOT.eq_refl.
-Qed.
-
-Lemma swap_add:
-  forall id id' B B' (G : mcfg), ~ IdOT.eq id id' ->
-  Map.Equal (Map.add id B (Map.add id' B' G)) (Map.add id' B' (Map.add id B G)).
-Proof.
-  intros id id' B B' G Hn.
-  apply MapF.P.F.Equal_mapsto_iff. intros k e. induction (IdOT.eq_dec k id) as [b|b]. 2: induction (IdOT.eq_dec k id') as [b'|b'].
-  - apply IdOT.eq_eq in b. subst k.
-    split; intro H. assert (He: B=e).
-    apply MapF.P.F.add_mapsto_iff in H as [[H1 H2]|[H1 H2]]. trivial. contradict H1. apply IdOT.eq_refl. subst e.
-    apply Map.add_2.
-      * now apply IdOT.neq_sym. 
-      * apply MapF.P.F.add_mapsto_iff. left.
-        apply MapF.P.F.add_mapsto_iff in H as [|[H1 H2]]. trivial. contradict H1. apply IdOT.eq_refl.
-      * assert (He: B=e).
-        apply Map.add_3 in H. apply MapF.P.F.add_mapsto_iff in H as [[H1 H2]|[H1 H2]].
-        trivial. contradict H1. apply IdOT.eq_refl.
-        now apply IdOT.neq_sym.
-        subst e.
-        apply Map.add_1. apply IdOT.eq_refl.
-  - apply IdOT.eq_eq in b'. subst k.
-    split; intro H.
-    * assert (He: B'=e).
-      apply Map.add_3 in H. apply MapF.P.F.add_mapsto_iff in H as [[H1 H2]|[H1 H2]].
-      trivial. contradict H1. apply IdOT.eq_refl. trivial.
-      subst e.
-      apply Map.add_1. apply IdOT.eq_refl.
-    * assert (He: B'=e). apply MapF.P.F.add_mapsto_iff in H as [[H1 H2]|[H1 H2]]. trivial. contradict H1. apply IdOT.eq_refl. subst e.
-      apply Map.add_2. trivial. apply Map.add_1. apply IdOT.eq_refl.
-  - split; intro H.
-    * assert (H': Map.MapsTo k e G).
-      eapply Map.add_3. apply IdOT.neq_sym. apply b'.
-      eapply Map.add_3. apply IdOT.neq_sym. apply b. apply H.
-      apply Map.add_2. now apply IdOT.neq_sym. apply Map.add_2. now apply IdOT.neq_sym. trivial.
-    * assert (H': Map.MapsTo k e G).
-      eapply Map.add_3. apply IdOT.neq_sym. apply b.
-      eapply Map.add_3. apply IdOT.neq_sym. apply b'. apply H.
-      apply Map.add_2. now apply IdOT.neq_sym. apply Map.add_2. now apply IdOT.neq_sym. trivial.
-Qed.
-
-Lemma transpose_neqkey_predecessor_aux: forall id, MapF.P.transpose_neqkey Map.Equal (predecessors_aux id).
-Proof.
-  intros id idB idB' B B' G H id'. assert (Hn: ~IdOT.eq idB idB') by apply H. clear H.
-  unfold predecessors_aux. remember (is_predecessor id B) as b. remember (is_predecessor id B') as b'.
-  induction b, b'; trivial.
-  apply MapF.P.F.find_m_Proper. apply IdOT.eq_refl. apply swap_add. apply Hn.
-Qed.
-
-Lemma Eempty_Map: forall (G: mcfg), Map.Empty G <-> Map.Equal G (Map.empty _).
-Proof.
-  apply MapF.P.map_induction_bis.
-  - intros. split; intro H'.
-    eapply MapF.P.F.Equal_trans. apply MapF.P.F.Equal_sym. apply H. apply H0.
-    eapply MapF.P.F.Empty_m. apply H. trivial.
-    eapply MapF.P.F.Empty_m. apply MapF.P.F.Equal_sym. apply H. apply H0.
-    eapply MapF.P.F.Equal_trans. apply H. trivial.
-  - split; intro. apply MapF.P.F.Equal_refl. apply Map.empty_1.
-  - split; intro H'.
-    * assert (H1: Map.MapsTo x e (Map.add x e m)).
-      apply MapF.P.F.add_mapsto_iff. left. split; trivial. apply IdOT.eq_refl.
-      contradict H1. now apply map_empty_mapsto.
-    * assert (H1: Map.MapsTo x e (Map.add x e m)).
-      apply MapF.P.F.add_mapsto_iff. left. split; trivial. apply IdOT.eq_refl.
-      contradict H'.
-      intro. eapply MapF.P.F.empty_mapsto_iff.
-      eapply MapF.P.F.Equal_mapsto_iff. apply MapF.P.F.Equal_sym. apply H2.
-      apply H1.
-Qed.
-
 Lemma MapsTo_Empty: forall (G:mcfg), (forall k e, ~Map.MapsTo k e G) -> Map.Empty G.
 Proof.
   intros. apply Eempty_Map. apply MapF.P.F.Equal_mapsto_iff.
   intros. split; intro H'; contradict H'. apply H. intro H0. eapply MapF.P.F.empty_mapsto_iff. apply H0.
 Qed.
 
-Lemma predecessors_in: forall G id id', Map.In id (predecessors id' G) -> Map.In id G.
-Proof.
-Admitted.
-
 Lemma in_mapsto_iff: forall (G:mcfg) id, Map.In id G <-> (exists B, Map.MapsTo id B G).
 Proof.
+  unfold Map.In. unfold Map.Raw.In0. now unfold Map.MapsTo.
+Qed.
+
+Lemma predecessors_in: forall G id id', Map.In id (predecessors id' G) -> Map.In id G.
+Proof.
+  (* intros G id id'. Search Map.In Map.fold. apply MapF.P.fold_rec_bis.
+  intros. *)
 Admitted.
 
 Lemma predecessors_aux_empty_acc: forall G id id' acc,
-  Map.In id (Map.fold (predecessors_aux id') G (Map.empty blk)) -> Map.In id (Map.fold (predecessors_aux id') G acc).
+  Map.In id (Map.fold (predecessors_aux id') G (Map.empty blk)) ->
+  Map.In id (Map.fold (predecessors_aux id') G acc).
 Proof.
 Admitted.
 
@@ -441,7 +461,7 @@ Proof.
     * eapply MapF.P.F.Equal_trans. 2:apply HP. unfold predecessors. apply MapF.P.fold_Equal;auto.
       apply Proper_predecessor_aux. apply transpose_neqkey_predecessor_aux.
     * rewrite HeqG2. apply MapF.P.F.Equal_refl.
-    * eapply is_head_trans. apply HG0. apply MapF.P.F.Equal_refl. trivial.
+    * eapply is_head_trans. apply MapF.P.F.Equal_sym. apply HG0. apply MapF.P.F.Equal_refl. trivial.
   - intros [Hpred [Hpart HDouble]]. remember (Map.add (blk_id A) A (Map.add (blk_id B) B G')) as G2.
     apply pat_when_correct. split.
     apply pat_focus_correct; trivial. exists G2. split. 2: apply DoubleHead_correct;trivial.
