@@ -5,88 +5,130 @@ From Coq Require Import OrderedType Strings.String ZArith Lia.
 Module IdOT <: OrderedType.
 
 Definition t := block_id.
+(* About block_id. *)
+Variant eq': t -> t -> Prop :=
+  | EqName s s' : s = s' -> eq' (Name s) (Name s')
+  | EqAnon n n' : n = n' -> eq' (Anon n) (Anon n')
+  | EqRaw n n' : n = n' -> eq' (Raw n) (Raw n')
+.
 
-Definition eq b b': Prop :=
-    match b,b' with
-      | Name s, Name s' => @Logic.eq string s s'
-      | Anon n, Anon n' => @Logic.eq int n n'
-      | Raw n, Raw n' => @Logic.eq int n n'
-      | _ , _ => False
-  end.
+Definition eq := eq'.
+
+#[global] Hint Constructors eq' : core.
+#[global] Hint Unfold eq: core.
 
 Theorem eq_refl: forall x:t, eq x x.
 Proof.
-    induction x; cbn; trivial.
+    induction x; cbn; auto.
 Qed.
 
 Theorem eq_sym : forall x y : t, eq x y -> eq y x.
 Proof. 
-    induction x, y; cbn; intro H; now destruct H.
+    intros ? ? H. inversion H; auto.
 Qed.
 
 Theorem neq_sym: forall x y: t, ~eq x y -> ~eq y x.
 Proof.
-  induction x, y; cbn; intro H; auto.
+  intros ? ? H Abs. apply H. inversion Abs; auto.
 Qed.
 
 Theorem eq_trans : forall x y z : t, eq x y -> eq y z -> eq x z.
 Proof.
-    induction x,y,z; cbn; intros H H'; now destruct H, H'.
+    intros ? ? ? H1 H2. inversion H1; inversion H2; subst; auto.
+Qed.
+
+#[global] Instance r_eq: Equivalence eq.
+  constructor; red.
+  apply eq_refl.
+  apply eq_sym.
+  apply eq_trans.
+Qed.
+
+#[global] Instance r_eq': Equivalence eq'.
+  constructor; red.
+  apply eq_refl.
+  apply eq_sym.
+  apply eq_trans.
 Qed.
 
 Theorem eq_dec: forall x y: t, { eq x y } + { ~ eq x y }.
 Proof.
-  induction x,y; cbn; auto.
-  apply string_dec. apply Z.eq_dec. apply Z.eq_dec.
+  induction x,y; cbn; try (right; intro Abs; now inversion Abs).
+  2, 3: case (Z.eq_dec n n0); [intros ->; left; auto|]; intro H; right; intro Abs; inversion Abs; auto.
+  case (string_dec s s0). intros ->. left. auto. intro H. right. intro Abs. inversion Abs. auto.
 Qed.
 
 Theorem eq_eq: forall x y: t, eq x y <-> x=y.
 Proof.
-  split; induction x,y; intro H; now destruct H.
+  split. intros []; subst; auto. intros ->. reflexivity.
 Qed.
 
-Definition lt b b': Prop :=
-  match b, b' with
-    | Name s, Name s' => StringOT.lt s s'
-    | Name s, _ => True
-    | Anon n, Anon n' => Z.lt n n'
-    | Anon _, Name _ => False
-    | Anon _, _ => True
-    | Raw n, Raw n' => Z.lt n n'
-    | Raw _, _ => False
+Definition eqb (b b':t) :=
+  match b,b' with
+  | Name s, Name s' => String.eqb s s'
+  | Anon n, Anon n' => Z.eqb n n'
+  | Raw n, Raw n' => Z.eqb n n'
+  | _ , _ => false
   end.
+
+Lemma eqb_eq : forall b b':t, eqb b b' = true <-> b=b'.
+Proof.
+  intros.
+  split.
+  - destruct b,b' ;
+      try (intros ; simpl in H ; discriminate) ;
+      simpl ; intros ; f_equal ;
+      try (now apply String.eqb_eq) ;
+      try (now apply Z.eqb_eq).
+  - intros ; subst.
+    destruct b' ; simpl ;
+      try (now apply String.eqb_eq) ;
+      try (now apply Z.eqb_eq).
+Qed.
+
+Variant lt': t -> t -> Prop :=
+  | LtName s s' : StringOT.lt s s' -> lt' (Name s) (Name s')
+  | LtAnon n n' : Z.lt n n' -> lt' (Anon n) (Anon n')
+  | LtRaw n n' : Z.lt n n' -> lt' (Raw n) (Raw n')
+  | LtNameAnon s n: lt' (Name s) (Anon n)
+  | LtNameRaw s n: lt' (Name s) (Raw n)
+  | LtAnonRaw n n': lt' (Anon n) (Raw n')
+.
+
+Definition lt := lt'.
+
+#[global] Hint Constructors lt' : core.
+#[global] Hint Unfold lt: core.
 
 Theorem lt_trans : forall x y z : t, lt x y -> lt y z -> lt x z.
 Proof.
-  induction x,y,z; cbn; try contradiction; auto.
-  apply StringOT.lt_trans. lia. lia.
+  intros ? ? ? H1 H2. inversion H1; inversion H2;subst; auto; (try now inversion H2); inversion H5; subst; constructor.
+  - eapply StringOT.lt_trans. apply H. trivial.
+  - lia.
+  - lia.
 Qed.
 
 Theorem lt_not_eq : forall x y : t, lt x y -> ~ eq x y.
 Proof.
-  induction x, y; cbn; try contradiction; auto.
-  apply StringOT.lt_not_eq. lia. lia.
+  intros x y H Abs. inversion Abs; subst; inversion H; subst.
+  - eapply StringOT.lt_not_eq. apply H2. reflexivity.
+  - lia.
+  - lia.
 Qed.
 
 Theorem compare : forall x y : t, Compare lt eq x y.
 Proof.
-  unfold lt, eq. induction x,y.
+  induction x, y; try (apply GT; now auto); try (apply LT; now auto).
   - assert (H: Compare StringOT.lt StringOT.eq s s0) by apply StringOT.compare.
-    destruct H. now apply LT. now apply EQ. now apply GT.
-  - now apply LT.
-  - now apply LT.
-  - now apply GT.
+    inversion H. apply LT. auto. apply EQ. auto. apply GT. auto.
   - case (Z_dec' n n0). intro s. case s.
-    * intro. now apply LT.
-    * intro. now apply GT.
-    * intro. now apply EQ.
-  - now apply LT.
-  - now apply GT.
-  - now apply GT.
+    * intro. apply LT. auto.
+    * intro. apply GT. auto.
+    * intro. apply EQ. auto.
   - case (Z_dec' n n0). intro s. case s.
-    * intro. now apply LT.
-    * intro. now apply GT.
-    * intro. now apply EQ.
+  * intro. apply LT. auto.
+  * intro. apply GT. auto.
+  * intro. apply EQ. auto.
 Qed.
 
 End IdOT.
