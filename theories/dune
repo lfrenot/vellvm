@@ -1,0 +1,7 @@
+(coq.theory
+ (name Pattern)
+ (package coq-pattern)
+ (theories TwoPhase Flocq Ceres QuickChick Paco ExtLib ITree)
+)
+
+(include_subdirs qualified)
