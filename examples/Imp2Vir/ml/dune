@@ -1,4 +1,0 @@
-(executables
-  (names impinterp)
-  (libraries extracted libvellvm)
-)
