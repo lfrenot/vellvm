@@ -17,12 +17,12 @@ Definition predecessors_aux (b id: bid) (bk: blk) acc :=
 Definition predecessors (b : bid) (G : map_cfg) : map_cfg :=
     fold (predecessors_aux b) G empty.
 
-Definition find_heads_aux (G: map_cfg) id b acc : list (blk*map_cfg) :=
+Definition heads_aux (G: map_cfg) id b acc : list (blk*map_cfg) :=
   if is_empty (predecessors id G)
   then (b, remove id G)::acc
   else acc.
 
-Definition find_heads (G: map_cfg): list (blk*map_cfg) := fold (find_heads_aux G) G [].
+Definition heads (G: map_cfg): list (blk*map_cfg) := fold (heads_aux G) G [].
 
 Definition is_head (G G':map_cfg) (b:blk) :=
   G' ≡ (remove b.(blk_id) G) /\ wf_map_cfg G' /\
@@ -126,6 +126,6 @@ Proof.
     symmetry. apply He. now apply Eempty.
 Qed.
 
-Lemma head_correct: forall G G' b, wf_map_cfg G -> ((b, G') ∈ (find_heads G) <-> is_head G G' b).
+Lemma heads_correct: forall G G' b, wf_map_cfg G -> ((b, G') ∈ (heads G) <-> is_head G G' b).
 Proof.
 Admitted.

@@ -34,15 +34,15 @@ Definition DoubleHead_sem A B G G' := let G'' := (add B.(blk_id) B G') in
   G ≡ (add A.(blk_id) A G'') /\
   is_head G G'' A /\ is_head G'' G' B.
 
-Theorem DoubleHead_correct {S}: forall A B G (P:Pat S) X,
+Theorem Pat_DoubleHead_correct {S}: forall A B G (P:Pat S) X,
   wf_map_cfg G -> (A,(B,X)) ∈ (MatchAll (DoubleHead P) G) <->
   exists G', X ∈ (MatchAll P G') /\ DoubleHead_sem A B G G'.
 Proof.
   intros A B G P X Hwf. unfold DoubleHead. split.
   - intro H.
-    apply pat_when_correct in H as [H HWhen].
-    apply pat_head_correct in H as [G1 [[HRA [HwfA [HMA HPA]]] H]]; trivial.
-    apply pat_head_correct in H as [G2 [[HRB [HwfB [HMB HPB]]] H]]; trivial.
+    apply Pat_When_correct in H as [H HWhen].
+    apply Pat_Head_correct in H as [G1 [[HRA [HwfA [HMA HPA]]] H]]; trivial.
+    apply Pat_Head_correct in H as [G2 [[HRB [HwfB [HMB HPB]]] H]]; trivial.
     apply is_seq_correct in HWhen.
     exists G2. split; trivial.
     repeat split; trivial.
@@ -60,9 +60,9 @@ Proof.
     * eapply Empty_m. 2: apply HPB. unfold predecessors. apply fold_Equal; auto.
       symmetry. now apply add_remove_elim2.
   - intros [G' [HG' [Hs [Hp [He [HhA HhB]]]]]].
-    apply pat_when_correct. split. apply pat_head_correct; trivial.
+    apply Pat_When_correct. split. apply Pat_Head_correct; trivial.
     exists (add (blk_id B) B G'). split. trivial.
-    apply pat_head_correct. apply add_wf_map_cfg. destruct HhB as [HB1 [HB2 [HB3 HB4]]]. trivial.
+    apply Pat_Head_correct. apply add_wf_map_cfg. destruct HhB as [HB1 [HB2 [HB3 HB4]]]. trivial.
     exists G'. split; trivial.
     unfold is_seq. rewrite Hs. now apply eqb_eq.
 Qed.
@@ -71,16 +71,16 @@ Definition BlockFusion_sem A B G G' G'' := let G2 := (add A.(blk_id) A (add B.(b
   (predecessors B.(blk_id) G) ≡ (add A.(blk_id) A empty) /\
   Partition G G'' G2 /\ DoubleHead_sem A B G2 G'.
 
-Theorem BlockFusion_correct {S}: forall A B G G'' (P: Pat S) X, wf_map_cfg G ->
+Theorem Pat_BlockFusion_correct {S}: forall A B G G'' (P: Pat S) X, wf_map_cfg G ->
   (G'', (A, (B, X))) ∈ (MatchAll (BlockFusion P) G) <->
   exists G', X ∈ (MatchAll P G') /\ BlockFusion_sem A B G G' G''.
 Proof.
   unfold BlockFusion.
   intros A B G G'' P X Hwf. split.
   - intro H. unfold BlockFusion_sem.
-    apply pat_when_correct in H as [H HWhen].
-    apply pat_focus_correct in H as [G0 [[HPart [Hwf'' Hwf0]] H]]; trivial.
-    apply DoubleHead_correct in H as [G' [ HG' [HS [HP [HG0 [HhA HhB]]]]]]; trivial.
+    apply Pat_When_correct in H as [H HWhen].
+    apply Pat_Focus_correct in H as [G0 [[HPart [Hwf'' Hwf0]] H]]; trivial.
+    apply Pat_DoubleHead_correct in H as [G' [ HG' [HS [HP [HG0 [HhA HhB]]]]]]; trivial.
     exists G'. split; trivial.
     remember (add (blk_id A) A (add (blk_id B) B G')) as G2. 
     split. 2:split. 3:split; trivial. 3:split. 4:split. 5:split;trivial.
@@ -96,12 +96,12 @@ Proof.
     * eapply is_head_eq. apply HG0. reflexivity. trivial.
   - intros [G' [HG' [Hpred [Hpart HDouble]]]].
     remember (add (blk_id A) A (add (blk_id B) B G')) as G2.
-    apply pat_when_correct. split.
-    apply pat_focus_correct; trivial.
+    apply Pat_When_correct. split.
+    apply Pat_Focus_correct; trivial.
     exists G2. split.
     destruct HDouble as [HSucc [HPred2 [_ [HhA HhB]]]].
     split; trivial. eapply wf_map_cfg_part. apply Hpart. trivial.
-    apply DoubleHead_correct. eapply wf_map_cfg_part. apply Hpart. trivial.
+    apply Pat_DoubleHead_correct. eapply wf_map_cfg_part. apply Hpart. trivial.
     exists G'. split; trivial.
     apply is_empty_1. intros k e H.
     induction (eq_dec k A.(blk_id)) as [a|a].

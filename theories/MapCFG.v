@@ -6,8 +6,6 @@ Require Import List.
 Import ListNotations.
 Import IdOT.
 
-Infix "∈" := List.In (at level 10).
-
 (* cfg definition *)
 
 Module Map := FMapAVL.Make(IdOT).
@@ -16,6 +14,8 @@ Module MapF := FMapFacts.OrdProperties Map.
 Import Map MapF MapF.P MapF.P.F.
 
 (* Notations *)
+
+Infix "∈" := List.In (at level 10).
 
 Infix "===" := eq' (at level 10).
 

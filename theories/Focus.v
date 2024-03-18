@@ -13,7 +13,7 @@ Fixpoint focus_rec l (g1 g2: map_cfg) :=
   | (id,b)::q => focus_rec q g1 g2 ++ focus_rec q (remove id g1) (add id b g2)
 end.
 
-Definition focus (G: map_cfg):= focus_rec (elements G) G empty.
+Definition focus (G: map_cfg) := focus_rec (elements G) G empty.
 
 Definition is_focus (G G1 G2: map_cfg) := Partition G G1 G2 /\ wf_map_cfg G1 /\ wf_map_cfg G2.
 
