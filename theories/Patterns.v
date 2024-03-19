@@ -1,11 +1,11 @@
 From Vellvm Require Import Syntax ScopeTheory Semantics.
 From ITree Require Import ITree Eq.
-From Pattern Require Import IdModule MapCFG Head Focus Block.
+From Pattern Require Import IdModule MapCFG Head Focus Block Branch.
 Require Import FSets.FMapAVL FSets.FMapFacts.
 Require Import List.
 Import ListNotations.
 Import Map MapF MapF.P MapF.P.F.
-Import IdOT MapCFG Head Focus Block.
+Import IdOT MapCFG Head Focus Block Branch.
 
 (* Pattern definition *)
 
@@ -16,6 +16,7 @@ Inductive Pat : Type -> Type :=
   | Focus: forall {S}, Pat S -> Pat (map_cfg * S)
   | Map: forall {S} {T}, Pat S -> (S -> T) -> Pat T
   | Block: forall {S}, Pat S -> Pat (blk * S)
+  | Branch: forall {S}, Pat S -> Pat (blk * bid * bid * S)
 .
 
 Notation "□" := Graph.
@@ -58,6 +59,7 @@ Fixpoint MatchAll {S} (P: Pat S) (g: map_cfg) : list S :=
     | p when f => List.filter f (MatchAll p g) 
     | Map _ _ p f => List.map f (MatchAll p g)
     | Block _ p => flat_map_r (MatchAll p) (blocks g)
+    | Branch _ p => flat_map_r (MatchAll p) (branches g)
 end.
 
 (* Correction de MatchAll *)
@@ -70,7 +72,7 @@ Qed.
 Theorem Pat_Head_correct {S}:
   forall (G: map_cfg) (P: Pat S) (b:blk) s, wf_map_cfg G ->
   (b, s) ∈ (MatchAll (Head P) G) <->
-  exists G', is_head G G' b /\ s ∈ (MatchAll P G').
+  exists G', head_sem G G' b /\ s ∈ (MatchAll P G').
 Proof.
   intros G P b s Hwf. setoid_rewrite <- heads_correct;trivial. apply in_flat_map_r.
 Qed.
@@ -101,15 +103,7 @@ Qed.
 Theorem Pat_Block_correct {S}:
   forall (G: map_cfg) (P: Pat S) (b:blk) s, wf_map_cfg G ->
   (b, s) ∈ (MatchAll (Block P) G) <->
-  exists G', is_block G G' b /\ s ∈ (MatchAll P G').
+  exists G', block_sem G G' b /\ s ∈ (MatchAll P G').
 Proof.
   intros. setoid_rewrite <-blocks_correct;trivial. apply in_flat_map_r.
 Qed.
-
-Definition map_cfg_to_ocfg: map_cfg -> ocfg. Admitted.
-
-(* Definition denotation_map_cfg: map_cfg -> bid * bid -> ITreeDefinition.itree instr_E (bid * bid + uvalue). Admitted. *)
-
-Definition fusion (A B: blk): blk. Admitted.
-
-Definition single (B:blk) := add B.(blk_id) B empty.

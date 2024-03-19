@@ -7,22 +7,23 @@ Import ListNotations.
 Import Map MapF MapF.P MapF.P.F.
 Import IdOT MapCFG Head Focus Patterns.
 
-(* Print texp.
-Print exp.
-Search exp. *)
-
 Notation exp := (texp dtyp).
 
-Definition IsTrue: exp -> Prop. Admitted.
+Inductive Analysis_1 : Type :=
+    | Top
+    | Bottom
+    | Zero
+    | One
+.
 
-Definition eqb_exp : exp -> exp -> bool. Admitted.
+Notation T := Top.
+Notation "⊥" := Bottom.
 
-Lemma eqb_exp_eq : forall e e', eqb_exp e e' = true -> IsTrue e -> IsTrue e'. Admitted.
+Definition analysis {S} := S -> Analysis_1.
 
-Definition is_branch_using e (b: blk) := match b.(blk_term) with
-    | TERM_Br e' _ _ => eqb_exp e e'
+Definition fixed_branch (f:analysis) (b: blk) := match b.(blk_term) with
+    | TERM_Br e _ _ => match f e with | T | ⊥ => false | _ => true end
     | _ => false
 end.
 
-Definition CCstP {S} (P:Pat S) e := (Block P) when (fun '(B, _) => is_branch_using e B).
-
+Definition CCstP {S} (P:Pat S) f := (Branch P) when (fun '(B,_,_,_) => fixed_branch f B).

@@ -28,13 +28,20 @@ Notation ocfg := (ocfg dtyp).
 Notation map_cfg := (Map.t blk).
 Notation empty := (empty blk).
 
+Notation add_id b := (add b.(blk_id) b).
+Notation remove_id b := (remove b.(blk_id)).
+Notation MapsTo_id b := (MapsTo b.(blk_id) b).
+
+Notation single b := (add_id b empty).
+
 (* Definitions *)
 
 Definition wf_map_cfg (g: map_cfg) := forall id b, MapsTo id b g -> b.(blk_id) = id.
 
+
 (* Proofs *)
 
-Lemma add_wf_map_cfg: forall b g, wf_map_cfg g -> wf_map_cfg (add b.(blk_id) b g).
+Lemma add_wf_map_cfg: forall b g, wf_map_cfg g -> wf_map_cfg (add_id b g).
 Proof.
   intros b g Hwf id a H.
   apply add_mapsto_iff in H. destruct H as [[H1 H2]|[H1 H2]].
@@ -141,4 +148,12 @@ Qed.
 Lemma in_mapsto_iff: forall (G:map_cfg) id, In id G <-> (exists B, MapsTo id B G).
 Proof.
   unfold In. unfold Raw.In0. now unfold MapsTo.
+Qed.
+
+Lemma filter_m: forall f (G G': map_cfg),
+  Proper (eq' ==> Logic.eq ==> Logic.eq) f -> G ≡ G' -> filter f G ≡ (filter f G').
+Proof.
+  intros ? ? ? ? H. apply Equal_mapsto_iff. setoid_rewrite filter_iff; trivial. intros idC C.
+  split; intros [H1 H2]; split; trivial; eapply MapsTo_m;
+  [reflexivity|reflexivity|symmetry;apply H|trivial|reflexivity|reflexivity|apply H|trivial].
 Qed.
