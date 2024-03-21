@@ -28,7 +28,7 @@ Proof.
 Qed.
 
 Definition BlockFusion_sem A B G G' :=
-  G' ≡ (remove_id B (remove_id A G)) /\ ~(A.(blk_id) === B.(blk_id)) /\
+  G' = (remove_id B (remove_id A G)) /\ ~(A.(blk_id) === B.(blk_id)) /\
   MapsTo_id A G /\ MapsTo_id B G /\
   (predecessors B.(blk_id) G) ≡ (single A) /\ successors A = [B.(blk_id)].
 
@@ -41,22 +41,18 @@ Proof.
     apply Pat_When_correct in H as [H Hseq]. apply is_seq_correct in Hseq.
     apply Pat_Block_correct in H as [G1 [[HmA [HrA Hwf1]] H]]; trivial.
     apply Pat_Head_correct in H as [G2 [[HrB [Hwf2 [HmB Hp]]] H]]; trivial.
-    exists G2. split; trivial.
+    exists G2. split; trivial. subst.
     repeat split; trivial.
-    * etransitivity. apply HrB. now apply remove_m.
-    * eapply remove_mapsto_iff. eapply MapsTo_m. reflexivity. reflexivity. symmetry.
-      apply HrA. apply HmB.
-    * eapply remove_3. eapply MapsTo_m. reflexivity. reflexivity. symmetry. apply HrA. trivial.
-    * eapply add_predecessor; trivial. etransitivity.
-      2: {apply Eempty. apply Hp. }
-      apply filter_m; auto. now symmetry.
+    * intro He. eapply remove_1. apply He. exists B. apply HmB.
+    * eapply remove_3. apply HmB.
+    * eapply add_predecessor; trivial. now apply Eempty.
   - intros [G2 [HX [H2 [HmA [HmB [Hne [Hp Hs]]]]]]]. remember (remove_id A G) as G1.
     apply Pat_When_correct. rewrite is_seq_correct. split; trivial.
-    apply Pat_Block_correct; trivial. exists G1. subst.
-    repeat split; trivial. now apply remove_wf_map_cfg.
-    apply Pat_Head_correct. now apply remove_wf_map_cfg.
-    exists G2. repeat split; trivial.
-    * eapply wf_map_cfg_eq. symmetry. apply H2. now repeat apply remove_wf_map_cfg.
+    apply Pat_Block_correct; trivial. exists G1.
+    repeat split; trivial. subst. now apply remove_wf_map_cfg.
+    apply Pat_Head_correct. subst. now apply remove_wf_map_cfg.
+    exists G2. subst. repeat split; trivial.
+    * now repeat apply remove_wf_map_cfg.
     * now eapply remove_2.
-    * apply Eempty. etransitivity. apply remove_predecessor; trivial. reflexivity.
+    * apply Eempty. apply remove_predecessor; trivial.
 Qed.

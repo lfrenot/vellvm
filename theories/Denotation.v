@@ -25,7 +25,7 @@ Definition fusion_comments (A B: blk): option (list String.string). Admitted.
 Definition fusion (A B: blk): blk :=
   mk_block A.(blk_id) A.(blk_phis) (fusion_code A B) B.(blk_term) (fusion_comments A B).
 
-Theorem FusionCorrect (G G' G'':map_cfg) A B f to:
+Theorem Denotation_BlockFusion_correct (G G' G'':map_cfg) A B f to:
   wf_map_cfg G -> to <> B.(blk_id) -> f <> A.(blk_id) ->
   (A, (B, G')) ∈ (MatchAll (BlockFusion □) G) ->
   denotation_map_cfg G (f, to) ≈

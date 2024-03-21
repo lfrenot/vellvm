@@ -11,7 +11,7 @@ Definition blocks_aux (G: map_cfg) : _ -> (blk*map_cfg) := fun '(id, b) => (b, r
 
 Definition blocks (G: map_cfg): list (blk*map_cfg) := List.map (blocks_aux G) (elements G).
 
-Definition block_sem (G G': map_cfg) b := MapsTo_id b G /\ G' ≡ (remove_id b G) /\ wf_map_cfg G'.
+Definition block_sem (G G': map_cfg) b := MapsTo_id b G /\ G' = (remove_id b G) /\ wf_map_cfg G'.
 
 Lemma blocks_correct: forall G G' b, wf_map_cfg G -> ((b, G') ∈ (blocks G) <-> block_sem G G' b).
 Proof.
