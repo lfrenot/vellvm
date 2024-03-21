@@ -12,6 +12,8 @@ Module Map := FMapAVL.Make(IdOT).
 Module MapF := FMapFacts.OrdProperties Map.
 
 Import Map MapF MapF.P MapF.P.F.
+(* Print MapF.P. *)
+
 
 (* Notations *)
 
@@ -185,4 +187,28 @@ Proof.
   intros ? ? ? ? H. apply Equal_mapsto_iff. setoid_rewrite filter_iff; trivial. intros idC C.
   split; intros [H1 H2]; split; trivial; eapply MapsTo_m;
   [reflexivity|reflexivity|symmetry;apply H|trivial|reflexivity|reflexivity|apply H|trivial].
+Qed.
+
+Lemma eqlistA_eq: forall (l l': list (bid*blk)), eqlistA (O.eqke (elt:=blk)) l l' -> l = l'.
+Proof.
+  induction l, l'; trivial; intro H; inversion H.
+  destruct a,p.
+  assert (Heq: l=l') by now apply IHl. inversion H3. cbn in H6, H7.
+  apply eq_eq in H6. now subst.
+Qed.
+
+Lemma Add_add: forall (B:blk) id G G', Add id B G G' <-> G' ≡ (add id B G).
+Proof.
+  intros B id G G'. unfold Add. split.
+  - intros H. apply Equal_mapsto_iff.
+    split; intros H';apply find_mapsto_iff in H'; apply find_mapsto_iff; etransitivity; [symmetry;apply H|trivial|apply H|trivial].
+  - intros H' id'. rewrite Equal_mapsto_iff in H'. remember (find id' G') as o. induction o as [a|].
+    * symmetry. apply find_mapsto_iff. apply H'. now apply find_mapsto_iff.
+    * symmetry. apply not_find_in_iff. symmetry in Heqo. apply not_find_in_iff in Heqo.
+      intros [A Ha]. apply H' in Ha. contradict Heqo. now exists A. 
+Qed.
+
+Lemma Below_In: forall id (G:map_cfg), Below id G -> ~ In id G.
+Proof.
+  intros id G HB HI. eapply lt_not_eq. apply HB. apply HI. reflexivity.
 Qed.

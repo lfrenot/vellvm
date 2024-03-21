@@ -103,7 +103,7 @@ Qed.
 Theorem Pat_Block_correct {S}:
   forall (G: map_cfg) (P: Pat S) (b:blk) s, wf_map_cfg G ->
   (b, s) ∈ (MatchAll (Block P) G) <->
-  exists G', block_sem G G' b /\ s ∈ (MatchAll P G').
+  exists G', blocks_sem G G' b /\ s ∈ (MatchAll P G').
 Proof.
   intros. setoid_rewrite <-blocks_correct;trivial. apply in_flat_map_r.
 Qed.
