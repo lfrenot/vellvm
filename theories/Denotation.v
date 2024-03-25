@@ -42,13 +42,27 @@ Record dom_renaming (σ : bk_renaming) (from to : list bid) : Prop :=
 Definition outs (g : ocfg) : list bid.
 Admitted.
 
+Variable cap: forall A, list A -> list A -> list A.
 Theorem foo (g1 g2 g2' : ocfg) (header : bid) (σ : bk_renaming) from to :
-  incl (outputs g1 +++ inputs g2) [header] ->
+  incl (cap _ (outputs g1) (inputs g2)) [header] ->
   dom_renaming σ (outs g2) (outs g2') ->
   (forall origin,
       eutt (sum_rel (fun '(from,to) '(from', to') => from' = σ from /\ to = to') Logic.eq)
         (⟦g2⟧bs (origin, header)) (⟦g2'⟧bs (origin, header))) ->
   List.In to (header ::: inputs g1) ->
+  ⟦g1 ++ g2⟧bs (from,to) ≈ ⟦bk_rename σ g1 ++ g2'⟧bs (from, to).
+Proof.
+  intros * INCL DOMσ EQ IN.
+Admitted.
+
+Theorem foo' (g1 g2 g2' : ocfg) (σ : bk_renaming) :
+  dom_renaming σ (outs g2) (outs g2') ->
+  (forall origin header,
+      List.In header (cap _ (outputs g1) (inputs g2)) ->
+      eutt (sum_rel (fun '(from,to) '(from', to') => from' = σ from /\ to = to') Logic.eq)
+        (⟦g2⟧bs (origin, header)) (⟦g2'⟧bs (origin, header))) ->
+  forall from to,
+  List.In to (cap _ (outputs g1) (inputs g2) +++ inputs g1) ->
   ⟦g1 ++ g2⟧bs (from,to) ≈ ⟦bk_rename σ g1 ++ g2'⟧bs (from, to).
 Proof.
   intros * INCL DOMσ EQ IN.
@@ -128,8 +142,10 @@ Module eutt_Notations.
 End eutt_Notations.
 Import eutt_Notations.
 
-Theorem Denotation_BlockFusion_correct (G G' G'':map_cfg) A B f to:
-  wf_map_cfg G -> to <> B.(blk_id) -> f <> A.(blk_id) ->
+Theorem Denotation_BlockFusion_correct (G G':map_cfg) A B f to:
+  wf_map_cfg G ->
+  to <> B.(blk_id) ->
+  f <> A.(blk_id) ->
   (A, (B, G')) ∈ (MatchAll (BlockFusion □) G) ->
   denotation_map_cfg G (f, to) ≈
   denotation_map_cfg (update G' (single (fusion A B))) (f, to).
