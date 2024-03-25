@@ -27,26 +27,30 @@ Proof.
   rewrite H. now apply eqb_eq.
 Qed.
 
-Definition BlockFusion_sem A B G G' :=
-  G' = (remove_id B (remove_id A G)) /\ ~(A.(blk_id) === B.(blk_id)) /\
-  MapsTo_id A G /\ MapsTo_id B G /\
-  (predecessors B.(blk_id) G) ≡ (single A) /\ successors A = [B.(blk_id)].
+Record BlockFusion_sem A B G G': Prop := {
+  EQ: G' = (remove_id B (remove_id A G));
+  NEQ: ~(A.(blk_id) === B.(blk_id));
+  MTA: MapsTo_id A G;
+  MTB: MapsTo_id B G;
+  PRED: (predecessors B.(blk_id) G) ≡ (single A);
+  SUC: successors A = [B.(blk_id)]
+}.
 
 Theorem Pat_BlockFusion_correct {S}: forall A B G (P: Pat S) X, wf_map_cfg G ->
   (A, (B, X)) ∈ (MatchAll (BlockFusion P) G) <->
   exists G1, X ∈ (MatchAll P G1) /\ BlockFusion_sem A B G G1.
 Proof.
-  intros A B G P X Hwf. unfold BlockFusion. split.
+  intros A B G P X WFG. unfold BlockFusion. split.
   - intros H.
-    apply Pat_When_correct in H as [H Hseq]. apply is_seq_correct in Hseq.
-    apply Pat_Block_correct in H as [G1 [[HmA [HrA Hwf1]] H]]; trivial.
-    apply Pat_Head_correct in H as [G2 [[HrB [Hwf2 [HmB Hp]]] H]]; trivial.
+    apply Pat_When_correct in H as [H SUC]. apply is_seq_correct in SUC.
+    apply Pat_Block_correct in H as [G1 [[MTA RMA WF1] H]]; trivial.
+    apply Pat_Head_correct in H as [G2 [[RMB WH2 MTB PRED] H]]; trivial.
     exists G2. split; trivial. subst.
     repeat split; trivial.
-    * intro He. eapply remove_1. apply He. exists B. apply HmB.
-    * eapply remove_3. apply HmB.
+    * intro He. eapply remove_1. apply He. exists B. apply MTB.
+    * eapply remove_3. apply MTB.
     * eapply add_predecessor; trivial. now apply Eempty.
-  - intros [G2 [HX [H2 [HmA [HmB [Hne [Hp Hs]]]]]]]. remember (remove_id A G) as G1.
+  - intros [G2 [HX [EQ NEQ MTA MTB PRED SUC]]]. remember (remove_id A G) as G1.
     apply Pat_When_correct. rewrite is_seq_correct. split; trivial.
     apply Pat_Block_correct; trivial. exists G1.
     repeat split; trivial. subst. now apply remove_wf_map_cfg.

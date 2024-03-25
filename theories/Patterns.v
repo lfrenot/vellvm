@@ -79,7 +79,7 @@ Qed.
 
 Theorem Pat_Focus_correct {S}:
   forall (G G1: map_cfg) (P:Pat S) s, wf_map_cfg G ->
-  (G1, s) ∈ (MatchAll (Focus P) G) <-> exists G2, is_focus G G1 G2 /\ s ∈ (MatchAll P G2).
+  (G1, s) ∈ (MatchAll (Focus P) G) <-> exists G2, focus_sem G G1 G2 /\ s ∈ (MatchAll P G2).
 Proof.
   intros G G1 P s Hwf. setoid_rewrite <-focus_correct;trivial. apply in_flat_map_r.
 Qed.

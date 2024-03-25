@@ -21,9 +21,12 @@ Definition heads_aux (G: map_cfg) id b acc : list (blk*map_cfg) :=
 
 Definition heads (G: map_cfg): list (blk*map_cfg) := fold (heads_aux G) G [].
 
-Definition head_aux_sem (G0 G G': map_cfg) b :=
-  G' = (remove_id b G0) /\ wf_map_cfg G' /\
-  MapsTo_id b G /\ Empty (predecessors b.(blk_id) G0).
+Record head_aux_sem (G0 G G': map_cfg) b := {
+  EQ: G' = (remove_id b G0);
+  WF: wf_map_cfg G';
+  MT: MapsTo_id b G;
+  PRED: Empty (predecessors b.(blk_id) G0)
+}.
 
 Definition head_sem (G G':map_cfg) (b:blk) := head_aux_sem G G G' b.
 
@@ -77,9 +80,9 @@ Qed.
 
 Lemma head_aux_sem_eq: forall G0 G G' G1 b, G' ≡ G -> head_aux_sem G0 G G1 b <-> head_aux_sem G0 G' G1 b.
 Proof.
-  intros GO G G' G1 b Heq. assert (Heq': G ≡ G') by now symmetry.
-  split; intros [H1 [Hwf1 [Hb Hp]]]; repeat split; trivial;
-  eapply MapsTo_m; try apply Heq; try apply Heq'; try reflexivity; trivial.
+  intros GO G G' G1 b EQIV. assert (EQIV': G ≡ G') by now symmetry.
+  split; intros [EQ WF MT PRED]; repeat split; trivial;
+  eapply MapsTo_m; try apply EQIV; try apply EQIV'; try reflexivity; trivial.
 Qed.
 
 Lemma heads_aux_correct:
@@ -87,48 +90,47 @@ Lemma heads_aux_correct:
   (b, G') ∈ (fold (heads_aux G0) G []) <-> head_aux_sem G0 G G' b.
 Proof.
   intros G G0. apply fold_rec_bis.
-  - intros G1 G2 a Heq Hrec G' B Hwf2 Hwf0. setoid_rewrite head_aux_sem_eq. 2:apply Heq.
-    apply Hrec; [apply (wf_map_cfg_eq G2)|];trivial. now symmetry.
-  - intros. split. try contradiction. intros [_ [_ [Hb _]]].
-    now apply empty_mapsto_iff in Hb.
-  - intros idB B a G1 HB HnI Hrec G2 A Hwfa Hwf0.
-    assert (HidB: B.(blk_id) = idB). apply Hwfa. now apply add_1. subst idB.
+  - intros G1 G2 a EQ REC. intros. setoid_rewrite head_aux_sem_eq. 2:apply EQ.
+    apply REC; [apply (wf_map_cfg_eq G2)|];trivial. now symmetry.
+  - intros. split. try contradiction. intros [_ _ MT _].
+    now apply empty_mapsto_iff in MT.
+  - intros idB B a G1 MTB NIN REC G2 A WF WF0.
+    assert (HidB: B.(blk_id) = idB). apply WF. now apply add_1. subst idB.
     split.
-    * unfold heads_aux. remember (is_empty (predecessors B.(blk_id) G0)) as b. induction b. intros [H|H].
-      + apply pair_equal_spec in H as [H1 H2].
+    * unfold heads_aux. remember (is_empty (predecessors B.(blk_id) G0)) as b. induction b. intros [EQ|IN].
+      + apply pair_equal_spec in EQ as [ ].
         subst A G2. repeat split; trivial.
         -- now apply remove_wf_map_cfg.
         -- now apply add_1.
         -- now apply is_empty_iff.
-      + assert (Hh1: (head_aux_sem G0 G1 G2 A)). { 
-          apply Hrec; trivial.
-          eapply wf_map_cfg_eq. 2: {apply remove_wf_map_cfg. apply Hwfa. } symmetry. apply remove_add_elim1; trivial.
-        } destruct Hh1 as [H2 [Hwf2 [HA Hp]]]. repeat split; trivial.
-        case (eq_dec A.(blk_id) B.(blk_id)); unfold eq; intro He.
-        -- contradict HnI. exists A. apply eq_eq in He. now rewrite <- He.
+      + assert (H: (head_aux_sem G0 G1 G2 A)). { 
+          apply REC; trivial.
+          eapply wf_map_cfg_eq. 2: {apply remove_wf_map_cfg. apply WF. } symmetry. apply remove_add_elim1; trivial.
+        } destruct H as [EQ WF2 MTA PRED]. repeat split; trivial.
+        case (eq_dec A.(blk_id) B.(blk_id)); unfold eq; [intros EQID|intros NEQID].
+        -- contradict NIN. exists A. apply eq_eq in EQID. now rewrite <- EQID.
         -- eapply add_2. now apply neq_sym. trivial.
-      + intro H. assert (Hh1: (head_aux_sem G0 G1 G2 A)). { 
-          apply Hrec; trivial.
-          eapply wf_map_cfg_eq. 2: {apply remove_wf_map_cfg. apply Hwfa. } symmetry. apply remove_add_elim1; trivial.
-        } destruct Hh1 as [H2 [Hwf2 [HA Hp]]]. repeat split; trivial.
-        case (eq_dec A.(blk_id) B.(blk_id)); unfold eq; intro He.
-        -- contradict HnI. exists A. apply eq_eq in He. now rewrite <- He.
+      + intro IN. assert (H: (head_aux_sem G0 G1 G2 A)). { 
+          apply REC; trivial.
+          eapply wf_map_cfg_eq. 2: {apply remove_wf_map_cfg. apply WF. } symmetry. apply remove_add_elim1; trivial.
+        } destruct H as [EQ WF2 MTA PRED]. repeat split; trivial.
+        case (eq_dec A.(blk_id) B.(blk_id)); unfold eq; [intros EQID|intros NEQID].
+        -- contradict NIN. exists A. apply eq_eq in EQID. now rewrite <- EQID.
         -- eapply add_2. now apply neq_sym. trivial.
-    * intros [H2 [Hwf2 [HA Hp]]]. unfold heads_aux.
+    * intros [EQ WF2 MTA PRED]. unfold heads_aux.
       remember (is_empty (predecessors B.(blk_id) G0)) as b. induction b.
-      case (eq_dec A.(blk_id) B.(blk_id)); unfold eq; intro H. left.
-      assert (HAB: A=B). {
-        eapply MapsTo_fun. apply HA. apply eq_eq in H. rewrite H. now apply add_1.
-      }
-      + now subst.
-      + right. apply Hrec. eapply wf_map_cfg_add. apply HnI. apply Hwfa. trivial.
-         repeat split; trivial. eapply add_3. apply neq_sym. apply H. apply HA.
-      + apply Hrec. eapply wf_map_cfg_add. apply HnI. apply Hwfa. trivial.
-         repeat split; trivial. case (eq_dec A.(blk_id) B.(blk_id)); unfold eq; intro H.
-         -- assert (HAB: A=B). {
-              eapply MapsTo_fun. apply HA. apply eq_eq in H. rewrite H. now apply add_1.
-            } subst A. apply is_empty_iff in Hp. rewrite Hp in Heqb. discriminate.
-         -- eapply add_3. apply neq_sym. apply H. apply HA.
+      case (eq_dec A.(blk_id) B.(blk_id)); unfold eq; [intros EQID|intros NEQID].
+      + left. assert (H: A=B). {
+          eapply MapsTo_fun. apply MTA. apply eq_eq in EQID. rewrite EQID. now apply add_1.
+        } now subst.
+      + right. apply REC. eapply wf_map_cfg_add. apply NIN. apply WF. trivial.
+        repeat split; trivial. eapply add_3. apply neq_sym. apply NEQID. apply MTA.
+      + apply REC. eapply wf_map_cfg_add. apply NIN. apply WF. trivial.
+        repeat split; trivial. case (eq_dec A.(blk_id) B.(blk_id)); unfold eq; [intros EQID|intros NEQID].
+        -- assert (H: A=B). {
+            eapply MapsTo_fun. apply MTA. apply eq_eq in EQID. rewrite EQID. now apply add_1.
+          } subst A. apply is_empty_iff in PRED. rewrite PRED in Heqb. discriminate.
+        -- eapply add_3. apply neq_sym. apply NEQID. apply MTA.
 Qed.
 
 Lemma heads_correct:

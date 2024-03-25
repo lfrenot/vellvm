@@ -1,4 +1,4 @@
-From TwoPhase Require Import Syntax ScopeTheory Semantics Theory Tactics.
+From Vellvm Require Import Syntax ScopeTheory Semantics Theory Tactics.
 From ITree Require Import ITree Eq HeterogeneousRelations.
 From Pattern Require Import IdModule MapCFG Patterns BlockFusion.
 Require Import FSets.FMapAVL FSets.FMapFacts.
@@ -137,7 +137,7 @@ Proof.
   intros * WF ineq1 ineq2 IN.
   apply Pat_BlockFusion_correct in IN as (G1 & IN & FUS); auto.
   apply Pat_Graph_correct in IN; subst.
-  destruct FUS as (-> & EQ & LUA & LUB & PRED & SUCC).
+  destruct FUS as [EQ LUA LUB PRED SUCC].
   apply bar.
   set (g := map_cfg_to_ocfg G).
   match goal with

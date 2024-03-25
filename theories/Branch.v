@@ -14,12 +14,13 @@ end.
 
 Definition branches (G: map_cfg): list (blk*bid*bid*map_cfg) := fold (branches_aux G) G [].
 
-Definition is_branch (G G': map_cfg) B l r :=
-    exists e L R, MapsTo_id B G /\ MapsTo l L G /\ MapsTo r R G /\
-    G' ≡ (remove_id B (remove l (remove r G))) /\ B.(blk_term) = TERM_Br e l r.
+Record branch_sem (G G': map_cfg) (B:blk) l r: Prop := {
+    EQ: G' = (remove_id B (remove l (remove r G)));
+    BR: exists e, B.(blk_term) = TERM_Br e l r
+}.
 
 Lemma branches_correct:
     forall G G' b l r, wf_map_cfg G ->
-    ((b,l,r, G') ∈ (branches G) <-> is_branch G G' b l r).
+    (b,l,r,G') ∈ (branches G) <-> branch_sem G G' b l r.
 Proof.
 Admitted.

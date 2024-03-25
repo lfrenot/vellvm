@@ -15,7 +15,11 @@ end.
 
 Definition focus (G: map_cfg) := focus_rec (elements G) G empty.
 
-Definition is_focus (G G1 G2: map_cfg) := Partition G G1 G2 /\ wf_map_cfg G1 /\ wf_map_cfg G2.
+Record focus_sem (G G1 G2: map_cfg): Prop := {
+  PART: Partition G G1 G2; 
+  WF1: wf_map_cfg G1;
+  WF2: wf_map_cfg G2
+}.
 
-Lemma focus_correct: forall G G1 G2, wf_map_cfg G -> ((G1, G2) ∈ (focus G)) <-> is_focus G G1 G2.
+Lemma focus_correct: forall G G1 G2, wf_map_cfg G -> ((G1, G2) ∈ (focus G)) <-> focus_sem G G1 G2.
 Admitted.
