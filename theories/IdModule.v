@@ -1,11 +1,16 @@
+(** This file contructs an ordered type from [block_id].
+    This allows to make a FMap that uses them as keys. *)
+
 From Vellvm Require Import Syntax ScopeTheory.
 From QuickChick Require Import StringOT.
 From Coq Require Import OrderedType Strings.String ZArith Lia.
 
 Module IdOT <: OrderedType.
 
+(** The type for FMap's keys needs to be named t. *)
 Definition t := block_id.
-(* About block_id. *)
+
+(** The equality on [block_id]. FMap needs [eq] to be a definition. *)
 Variant eq': t -> t -> Prop :=
   | EqName s s' : s = s' -> eq' (Name s) (Name s')
   | EqAnon n n' : n = n' -> eq' (Anon n) (Anon n')
@@ -14,8 +19,9 @@ Variant eq': t -> t -> Prop :=
 
 Definition eq := eq'.
 
-#[global] Hint Constructors eq' : core.
-#[global] Hint Unfold eq: core.
+(** Proofs that [eq] is an equivalence. *)
+#[local] Hint Constructors eq' : core.
+#[local] Hint Unfold eq: core.
 
 Theorem eq_refl: forall x:t, eq x x.
 Proof.
@@ -27,17 +33,15 @@ Proof.
     intros ? ? H. inversion H; auto.
 Qed.
 
-Theorem neq_sym: forall x y: t, ~eq x y -> ~eq y x.
-Proof.
-  intros ? ? H Abs. apply H. inversion Abs; auto.
-Qed.
-
 Theorem eq_trans : forall x y z : t, eq x y -> eq y z -> eq x z.
 Proof.
     intros ? ? ? H1 H2. inversion H1; inversion H2; subst; auto.
 Qed.
 
+
+(** Makes [eq] an Equivalence. Allows using the transitivity, reflexivity and symmetry tactics. *)
 #[global] Instance r_eq: Equivalence eq.
+Proof.
   constructor; red.
   apply eq_refl.
   apply eq_sym.
@@ -45,12 +49,20 @@ Qed.
 Qed.
 
 #[global] Instance r_eq': Equivalence eq'.
+Proof.
   constructor; red.
   apply eq_refl.
   apply eq_sym.
   apply eq_trans.
 Qed.
 
+(** Allows using the symmetry tactic for [~eq]. *)
+#[global] Instance s_neq: Symmetric (fun x y => ~eq x y).
+Proof.
+  intros ? ? H Abs. apply H. now symmetry.
+Qed.
+
+(** Decidability, Equality and boolean version. *)
 Theorem eq_dec: forall x y: t, { eq x y } + { ~ eq x y }.
 Proof.
   induction x,y; cbn; try (right; intro Abs; now inversion Abs).
@@ -86,6 +98,7 @@ Proof.
       try (now apply Z.eqb_eq).
 Qed.
 
+(** Strict order on [block_id]. Arbitrarily, Name < Anon < Raw. *)
 Variant lt': t -> t -> Prop :=
   | LtName s s' : StringOT.lt s s' -> lt' (Name s) (Name s')
   | LtAnon n n' : Z.lt n n' -> lt' (Anon n) (Anon n')
@@ -97,8 +110,8 @@ Variant lt': t -> t -> Prop :=
 
 Definition lt := lt'.
 
-#[global] Hint Constructors lt' : core.
-#[global] Hint Unfold lt: core.
+#[local] Hint Constructors lt' : core.
+#[local] Hint Unfold lt: core.
 
 Theorem lt_trans : forall x y z : t, lt x y -> lt y z -> lt x z.
 Proof.
@@ -126,9 +139,9 @@ Proof.
     * intro. apply GT. auto.
     * intro. apply EQ. auto.
   - case (Z_dec' n n0). intro s. case s.
-  * intro. apply LT. auto.
-  * intro. apply GT. auto.
-  * intro. apply EQ. auto.
+    * intro. apply LT. auto.
+    * intro. apply GT. auto.
+    * intro. apply EQ. auto.
 Qed.
 
 End IdOT.

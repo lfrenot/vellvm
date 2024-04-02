@@ -8,14 +8,14 @@ Import Map MapF MapF.P MapF.P.F.
 Import IdOT MapCFG.
 
 Definition branches_aux (G: map_cfg) id b acc : list (blk*bid*bid*map_cfg) := match b.(blk_term) with
-    | TERM_Br _ l r => (b, l, r, (remove id (remove l (remove r G))))::acc
+    | TERM_Br _ l r => (b, l, r, (remove id G))::acc
     | _ => acc
 end.
 
 Definition branches (G: map_cfg): list (blk*bid*bid*map_cfg) := fold (branches_aux G) G [].
 
 Record branch_sem (G G': map_cfg) (B:blk) l r: Prop := {
-    EQ: G' = (remove_id B (remove l (remove r G)));
+    EQ: G' = (remove_id B G);
     BR: exists e, B.(blk_term) = TERM_Br e l r
 }.
 

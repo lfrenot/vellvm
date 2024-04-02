@@ -1,3 +1,6 @@
+(** This file defines the function for the [Block] [Pattern], the semantic of the pattern,
+    and proves the correctness and completeness of that function. *)
+
 From Vellvm Require Import Syntax ScopeTheory Semantics.
 From ITree Require Import ITree Eq.
 Require Import FSets.FMapAVL FSets.FMapFacts.
@@ -31,17 +34,17 @@ Proof.
     * assert (Enil: elements E = []) by now apply elements_Empty. now rewrite Enil.
     * intros [MTE _ _]. contradict MTE. intro MTE. eapply empty_mapsto_iff.
       eapply MapsTo_m. reflexivity. reflexivity. symmetry. apply Eempty. apply Em. apply MTE.
-  - intros G1 G2 REC idB B Bel EQ2 G' A WF2 WF0. rewrite Add_add in EQ2.
+  - intros G1 G2 REC idB B Bel EQ2 G' A WF2 WF0. rewrite Aadd in EQ2. apply Below_nIn in Bel as NIN.
     assert (BidB: B.(blk_id) = idB). {
       apply WF2. eapply MapsTo_m. reflexivity. reflexivity. apply EQ2. now apply add_1.
     } subst.
     replace (elements G2) with ((B.(blk_id), B)::(elements G1)). 2: {
       symmetry. apply eqlistA_eq. now apply elements_Add_Below.
-    } apply Below_In in Bel as NIN.
+    } 
     split. intros [H|H].
-    3: case (eq_dec A.(blk_id) B.(blk_id)) as [EQ|NEQ]; [unfold eq in EQ|unfold eq in NEQ]; intros [MT2 RM0 WF'].
+    3: case (eq_dec A.(blk_id) B.(blk_id)); unfold eq ; [intros EQ|intros NEQ]; intros [MT2 RM0 WF'].
     * apply pair_equal_spec in H as []. subst A G'. 
-    repeat split; trivial.
+      repeat split; trivial.
       + eapply MapsTo_m. reflexivity. reflexivity. apply EQ2. now apply add_1.
       + now apply remove_wf_map_cfg.
     * apply REC in H as [HM1 HR0 WF']; trivial.
@@ -49,14 +52,16 @@ Proof.
         intro. apply NIN. exists A. eapply MapsTo_m. 4: apply HM1. now symmetry. reflexivity. reflexivity.
       }
       repeat split;trivial.
-      + eapply MapsTo_m. reflexivity. reflexivity. apply EQ2. apply add_2. now apply neq_sym. trivial.
-      + eapply wf_map_cfg_add. apply NIN. eapply wf_map_cfg_eq. apply EQ2. trivial.
+      + eapply MapsTo_m. reflexivity. reflexivity. apply EQ2. apply add_2. now symmetry. trivial.
+      + eapply add_wf_map_cfg. apply NIN. eapply wf_map_cfg_eq. apply EQ2. trivial.
     * assert (Heq: A=B). { 
-      eapply wf_map_cfg_blk. apply WF2. apply MT2. eapply MapsTo_m. apply EQ. reflexivity. apply EQ2. now apply add_1.
+      eapply wf_map_cfg_blk. apply WF2. apply MT2. eapply MapsTo_m.
+      apply EQ. reflexivity. apply EQ2. now apply add_1.
     } subst. now left.
-    * right. apply REC; trivial. eapply wf_map_cfg_add. apply NIN. eapply wf_map_cfg_eq. apply EQ2. trivial.
+    * right. apply REC; trivial. eapply add_wf_map_cfg. apply NIN. eapply wf_map_cfg_eq. apply EQ2. trivial.
       repeat split; trivial.
-      eapply add_3. apply neq_sym. apply NEQ. eapply MapsTo_m. reflexivity. reflexivity. symmetry. apply EQ2. trivial.
+      eapply add_3. symmetry. apply NEQ. eapply MapsTo_m.
+      reflexivity. reflexivity. symmetry. apply EQ2. trivial.
 Qed.
 
 Lemma blocks_correct: forall G G' b, wf_map_cfg G -> ((b, G') ∈ (blocks G) <-> blocks_sem G G' b).
