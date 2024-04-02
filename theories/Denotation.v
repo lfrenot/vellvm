@@ -161,17 +161,39 @@ Module eutt_Notations.
 End eutt_Notations.
 Import eutt_Notations.
 
+(* About denote_ocfg_prefix. *)
+(* Opaque denote_block. *)
+Lemma denote_ocfg_prefix_strong:
+  forall (prefix bks' postfix : ocfg) [bks : ocfg] (from to : bid),
+    bks = prefix ++ bks' ++ postfix ->
+    wf_ocfg_bid bks ->
+    ⟦ bks ⟧bs (from, to) ≳
+        x_ <- ⟦ bks' ⟧bs (from, to);;
+    match x_ with
+      | inl x => ⟦ bks ⟧bs x
+      | inr x => Ret (inr x)
+end.
+Admitted.
+(* Transparent denote_block. *)
+(* Print denote_ocfg. *)
+Definition denote_ocfg_equiv_cond (g1 g2 g2': ocfg) TO σ :=
+  forall origin header,
+    header ∈ TO ->
+      (exists x, ⟦g2⟧bs (origin, header) = Ret (inr x) /\
+            ⟦g2'⟧bs (origin, header) = Ret (inr x))
+    \/
+      (exists from to, to ∈ (inputs g1) /\
+                  ⟦g2⟧bs (origin, header) = Ret (inl (from, to)) /\
+                  ⟦g2'⟧bs (origin, header) = Ret (inl (σ from, to)))
+.
 
-Theorem foo' (g1 g2 g2' : ocfg) (σ : bk_renaming) :
-  let TO  :=  (outputs g1) ∩ (inputs g2) in
-  let TO' :=  (outputs g1) ∩ (inputs g2') in
+Theorem denote_ocfg_equiv (g1 g2 g2' : ocfg) (σ : bk_renaming) :
+  let TO  := (outputs g1) ∩ (inputs g2)  in
+  let TO' := (outputs g1) ∩ (inputs g2') in
   TO = TO' ->
   wf_ocfg_bid (g1 ++ g2) -> wf_ocfg_bid (ocfg_rename σ g1 ++ g2') ->
   dom_renaming σ (outs g2) (outs g2') ->
-  (forall origin header,
-      List.In header TO ->
-      eutt (sum_rel (fun '(from,to) '(from', to') => from' = σ from /\ to = to') Logic.eq)
-        (⟦g2⟧bs (origin, header)) (⟦g2'⟧bs (origin, header))) ->
+  denote_ocfg_equiv_cond g1 g2 g2' TO σ ->
   forall from to,
   List.In to (TO ++ inputs g1) ->
   ⟦g1 ++ g2⟧bs (from,to) ≈ ⟦ocfg_rename σ g1 ++ g2'⟧bs (from, to).
@@ -180,7 +202,19 @@ Proof.
   ecofix cih.
   intros * EQ WF WFσ DOMσ. intros * hIN. intros * tIN'.
   pose proof (in_app_or _ _ _ tIN') as [tIN|tIN].
-  -
+  - rewrite (@denote_ocfg_prefix_strong g1 g2 nil (g1 ++ g2) from to).
+    2,3: admit.
+    rewrite (@denote_ocfg_prefix_strong (ocfg_rename σ g1) g2' nil (ocfg_rename σ g1 ++ g2') from to).
+    2, 3: admit.
+    (* unfold denote_ocfg_equiv_cond in hIN. *)
+    destruct (hIN from to tIN) as [[x [RET RET']]|[from' [to' [t'IN [RET RET']]]]]; rewrite RET, RET'.
+    * admit.
+    * admit.
+  - rewrite (@denote_ocfg_prefix_strong nil g1 g2 (g1 ++ g2) from to).
+    2,3: admit.
+    rewrite (@denote_ocfg_prefix_strong nil (ocfg_rename σ g1) g2' (ocfg_rename σ g1 ++ g2') from to).
+    2, 3: admit.
+  (* -
     rewrite (@denote_ocfg_prefix g1 g2 nil (g1 ++ g2) from to).
     2,3: admit.
     rewrite (@denote_ocfg_prefix (ocfg_rename σ g1) g2' nil (ocfg_rename σ g1 ++ g2') from to).
@@ -194,7 +228,7 @@ Proof.
   - apply find_block_in_inputs in tIN as [b bIN]. vjmp. 2: vjmp.
     * apply find_block_app_l_wf; trivial. apply bIN.
     * apply find_block_app_l_wf; trivial. assert (bIN': find_block (ocfg_rename σ g1) to = Some b). admit. apply bIN'.
-    * admit.
+    * admit. *)
 Admitted.
 
 Theorem Denotation_BlockFusion_correct (G G':map_cfg) A B f to:
@@ -220,15 +254,16 @@ Proof.
   assert (EQg': g' = ocfg_rename σ (rm_bk A (rm_bk B g)) ++ [fusion A B]).
   admit.
   rewrite EQg, EQg'.
-  apply foo'.
+  apply denote_ocfg_equiv.
+  - admit.
   - admit.
   - admit.
   - admit.
   - intros from header. rewrite cap_correct. intros [hINo hINi]. apply find_block_in_inputs in hINi as [b bIN].
-    rewrite denote_ocfg_unfold_in; cycle 1.
+    (* rewrite denote_ocfg_unfold_in; cycle 1.
     apply bIN.
     rewrite denote_ocfg_unfold_in; cycle 1.
-    assert (bIN': find_block [fusion A B] header = Some b). admit. apply bIN'.
+    assert (bIN': find_block [fusion A B] header = Some b). admit. apply bIN'. *)
     admit.
   - admit.
 Admitted.
