@@ -162,7 +162,10 @@ End eutt_Notations.
 Import eutt_Notations.
 
 
-Theorem foo' (g1 g2 g2' : ocfg) (σ : bk_renaming) : let TO :=  (outputs g1) ∩ (inputs g2) in
+Theorem foo' (g1 g2 g2' : ocfg) (σ : bk_renaming) :
+  let TO  :=  (outputs g1) ∩ (inputs g2) in
+  let TO' :=  (outputs g1) ∩ (inputs g2') in
+  TO = TO' ->
   wf_ocfg_bid (g1 ++ g2) -> wf_ocfg_bid (ocfg_rename σ g1 ++ g2') ->
   dom_renaming σ (outs g2) (outs g2') ->
   (forall origin header,
@@ -173,11 +176,21 @@ Theorem foo' (g1 g2 g2' : ocfg) (σ : bk_renaming) : let TO :=  (outputs g1) ∩
   List.In to (TO ++ inputs g1) ->
   ⟦g1 ++ g2⟧bs (from,to) ≈ ⟦ocfg_rename σ g1 ++ g2'⟧bs (from, to).
 Proof.
-  intros * WF WFσ DOMσ. intros * hIN. intros * tIN'. pose proof (in_app_or _ _ _ tIN') as [tIN|tIN].
-  - subst TO. apply cap_correct in tIN as [tINo tINi]. apply find_block_in_inputs in tINi as [b bIN]. vjmp. 2: vjmp.
+  einit.
+  ecofix cih.
+  intros * EQ WF WFσ DOMσ. intros * hIN. intros * tIN'.
+  pose proof (in_app_or _ _ _ tIN') as [tIN|tIN].
+  -
+    rewrite (@denote_ocfg_prefix g1 g2 nil (g1 ++ g2) from to).
+    2,3: admit.
+    rewrite (@denote_ocfg_prefix (ocfg_rename σ g1) g2' nil (ocfg_rename σ g1 ++ g2') from to).
+    2,3: admit.
+    assert (exists b', find_block g2' to = Some b') as [b' LU'] by admit.
+    subst TO. apply cap_correct in tIN as [tINo tINi]. apply find_block_in_inputs in tINi as [b bIN]. vjmp. 2: vjmp.
     * apply find_block_app_r_wf; trivial. apply bIN.
-    * apply find_block_app_r_wf; trivial. assert (bIN': find_block g2' to = Some b). admit. apply bIN'.
-    * admit.
+    * apply find_block_app_r_wf; trivial. apply LU'.
+    *
+      admit.
   - apply find_block_in_inputs in tIN as [b bIN]. vjmp. 2: vjmp.
     * apply find_block_app_l_wf; trivial. apply bIN.
     * apply find_block_app_l_wf; trivial. assert (bIN': find_block (ocfg_rename σ g1) to = Some b). admit. apply bIN'.
