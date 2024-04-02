@@ -9,7 +9,7 @@ Import ListNotations.
 Import Map MapF MapF.P MapF.P.F.
 Import IdOT MapCFG Head Focus Block Branch.
 
-(** This scetionc defines the [Pattern] type and the [MatchAll] function to interpret them. *)
+(** This section defines the [Pattern] type and the [MatchAll] function to interpret them. *)
 
 Inductive Pattern : Type -> Type :=
   | Graph: Pattern map_cfg
@@ -46,7 +46,7 @@ end.
 
     These proofs are done for each pattern separately.
     They enable decontructing each atomic patterns for proof on larger ones. 
-    They mostly rely on [in_flat_map_r] and the proofs on each pattern's corresponding function, done in it's coresponding file. *)
+    They mostly rely on [in_flat_map_r] and the proofs on each pattern's corresponding function, done in its coresponding file. *)
 
 Lemma in_flat_map_r {A B C}:
   forall (f:B->list C) (l:list (A*B)) (a:A) (c:C), (a,c) ∈ (flat_map_r f l) <->
@@ -109,4 +109,12 @@ Theorem Pattern_Block_correct {S}:
   exists G', blocks_sem G G' b /\ X ∈ (MatchAll P G').
 Proof.
   intros. setoid_rewrite <-blocks_correct;trivial. apply in_flat_map_r.
+Qed.
+
+Theorem Pattern_Branch_correct {S}:
+  forall G P B l r (s:S), wf_map_cfg G ->
+  (B,l,r,s) ∈ (MatchAll (Branch P) G) <->
+  exists G', branch_sem G G' B l r /\ s ∈ (MatchAll P G').
+Proof.
+  intros. setoid_rewrite <-branches_correct; trivial. apply in_flat_map_r.
 Qed.
