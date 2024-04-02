@@ -1,3 +1,6 @@
+(** This file contains the tools to prove the correctness of the block fusion optimization.
+    It relies on the garantees given by the [BlockFusion] pattern. *)
+
 From Vellvm Require Import Syntax ScopeTheory Semantics Theory Tactics.
 From ITree Require Import ITree Eq HeterogeneousRelations.
 From Pattern Require Import IdModule MapCFG Patterns BlockFusion.
@@ -18,19 +21,43 @@ Definition denotation_map_cfg (g : map_cfg) fto :ITreeDefinition.itree instr_E (
 
 (* Block Fusion *)
 
-Definition fusion_code (A B: blk): code dtyp. Admitted.
+Definition fusion_code (A B: blk): code dtyp := A.(blk_code) ++ B.(blk_code).
 
-Definition fusion_comments (A B: blk): option (list String.string). Admitted.
+Definition fusion_comments (A B: blk) :=
+  match (A.(blk_comments), B.(blk_comments)) with
+    | (Some cA, Some cB) => Some (cA++cB)
+    | (Some cA, _) => Some cA
+    | (_, Some cB) => Some cB
+    | (_, _) => None
+  end.
 
-Definition fusion (A B: blk): blk :=
-  mk_block A.(blk_id) A.(blk_phis) (fusion_code A B) B.(blk_term) (fusion_comments A B).
+Definition fusion (A B: blk): blk := {|
+  blk_id         := A.(blk_id);
+  blk_phis       := A.(blk_phis);
+  blk_code       := fusion_code A B;
+  blk_term       := B.(blk_term);
+  blk_comments   := fusion_comments A B
+|}.
 
 Import SemNotations.
 Import SetNotations.
 (* todo better representation*)
 Definition bk_renaming := bid -> bid.
-Definition bk_rename (σ : bk_renaming) : ocfg -> ocfg.
-Admitted.
+
+Definition phi_rename (σ : bk_renaming) (ϕ:  phi dtyp): phi dtyp :=
+  match ϕ with
+    | Phi τ exps => Phi τ (List.map (fun '(id,e) => (σ id, e)) exps)
+  end.
+
+Definition bk_phi_rename (σ : bk_renaming) (b: blk): blk := {|
+  blk_id         := b.(blk_id);
+  blk_phis       := List.map (fun '(x,φ) => (x,phi_rename σ φ)) b.(blk_phis);
+  blk_code       := b.(blk_code);
+  blk_term       := b.(blk_term);
+  blk_comments   := b.(blk_comments)
+|}.
+
+Definition ocfg_rename (σ : bk_renaming) (g: ocfg): ocfg := List.map (bk_phi_rename σ) g.
 
 Record dom_renaming (σ : bk_renaming) (from to : list bid) : Prop :=
   {
@@ -39,31 +66,23 @@ Record dom_renaming (σ : bk_renaming) (from to : list bid) : Prop :=
   }.
 
 (* Nodes that may exit the graph *)
-Definition outs (g : ocfg) : list bid.
-Admitted.
 
-Variable cap: forall A, list A -> list A -> list A.
+Definition outs (g : ocfg) : list bid := inputs g.
+
+Definition cap {A}: list A -> list A -> list A. Admitted.
+
+Infix "∩" := cap (at level 10).
+
+Lemma cap_correct: forall {A} (x:A) (l l': list A), x ∈ (l ∩ l') <-> x ∈ l /\ x ∈ l'. Admitted.
+
 Theorem foo (g1 g2 g2' : ocfg) (header : bid) (σ : bk_renaming) from to :
-  incl (cap _ (outputs g1) (inputs g2)) [header] ->
+  incl (cap (outputs g1) (inputs g2)) [header] ->
   dom_renaming σ (outs g2) (outs g2') ->
   (forall origin,
       eutt (sum_rel (fun '(from,to) '(from', to') => from' = σ from /\ to = to') Logic.eq)
         (⟦g2⟧bs (origin, header)) (⟦g2'⟧bs (origin, header))) ->
   List.In to (header ::: inputs g1) ->
-  ⟦g1 ++ g2⟧bs (from,to) ≈ ⟦bk_rename σ g1 ++ g2'⟧bs (from, to).
-Proof.
-  intros * INCL DOMσ EQ IN.
-Admitted.
-
-Theorem foo' (g1 g2 g2' : ocfg) (σ : bk_renaming) :
-  dom_renaming σ (outs g2) (outs g2') ->
-  (forall origin header,
-      List.In header (cap _ (outputs g1) (inputs g2)) ->
-      eutt (sum_rel (fun '(from,to) '(from', to') => from' = σ from /\ to = to') Logic.eq)
-        (⟦g2⟧bs (origin, header)) (⟦g2'⟧bs (origin, header))) ->
-  forall from to,
-  List.In to (cap _ (outputs g1) (inputs g2) +++ inputs g1) ->
-  ⟦g1 ++ g2⟧bs (from,to) ≈ ⟦bk_rename σ g1 ++ g2'⟧bs (from, to).
+  ⟦g1 ++ g2⟧bs (from,to) ≈ ⟦ ocfg_rename σ g1 ++ g2'⟧bs (from, to).
 Proof.
   intros * INCL DOMσ EQ IN.
 Admitted.
@@ -142,6 +161,29 @@ Module eutt_Notations.
 End eutt_Notations.
 Import eutt_Notations.
 
+
+Theorem foo' (g1 g2 g2' : ocfg) (σ : bk_renaming) : let TO :=  (outputs g1) ∩ (inputs g2) in
+  wf_ocfg_bid (g1 ++ g2) -> wf_ocfg_bid (ocfg_rename σ g1 ++ g2') ->
+  dom_renaming σ (outs g2) (outs g2') ->
+  (forall origin header,
+      List.In header TO ->
+      eutt (sum_rel (fun '(from,to) '(from', to') => from' = σ from /\ to = to') Logic.eq)
+        (⟦g2⟧bs (origin, header)) (⟦g2'⟧bs (origin, header))) ->
+  forall from to,
+  List.In to (TO ++ inputs g1) ->
+  ⟦g1 ++ g2⟧bs (from,to) ≈ ⟦ocfg_rename σ g1 ++ g2'⟧bs (from, to).
+Proof.
+  intros * WF WFσ DOMσ. intros * hIN. intros * tIN'. pose proof (in_app_or _ _ _ tIN') as [tIN|tIN].
+  - subst TO. apply cap_correct in tIN as [tINo tINi]. apply find_block_in_inputs in tINi as [b bIN]. vjmp. 2: vjmp.
+    * apply find_block_app_r_wf; trivial. apply bIN.
+    * apply find_block_app_r_wf; trivial. assert (bIN': find_block g2' to = Some b). admit. apply bIN'.
+    * admit.
+  - apply find_block_in_inputs in tIN as [b bIN]. vjmp. 2: vjmp.
+    * apply find_block_app_l_wf; trivial. apply bIN.
+    * apply find_block_app_l_wf; trivial. assert (bIN': find_block (ocfg_rename σ g1) to = Some b). admit. apply bIN'.
+    * admit.
+Admitted.
+
 Theorem Denotation_BlockFusion_correct (G G':map_cfg) A B f to:
   wf_map_cfg G ->
   to <> B.(blk_id) ->
@@ -151,8 +193,8 @@ Theorem Denotation_BlockFusion_correct (G G':map_cfg) A B f to:
   denotation_map_cfg (update G' (single (fusion A B))) (f, to).
 Proof.
   intros * WF ineq1 ineq2 IN.
-  apply Pat_BlockFusion_correct in IN as (G1 & IN & FUS); auto.
-  apply Pat_Graph_correct in IN; subst.
+  apply Pattern_BlockFusion_correct in IN as (G1 & IN & FUS); auto.
+  apply Pattern_Graph_correct in IN; subst.
   destruct FUS as [EQ LUA LUB PRED SUCC].
   apply bar.
   set (g := map_cfg_to_ocfg G).
@@ -162,21 +204,18 @@ Proof.
   set (σ := fun id => if eqb id (blk_id B) then blk_id A else id).
   assert (EQg: g = rm_bk A (rm_bk B g) ++ [A;B]).
   admit.
-  assert (EQg': g' = bk_rename σ (rm_bk A (rm_bk B g)) ++ [fusion A B]).
+  assert (EQg': g' = ocfg_rename σ (rm_bk A (rm_bk B g)) ++ [fusion A B]).
   admit.
   rewrite EQg, EQg'.
-  apply foo with (header := blk_id A).
-
-  cbn.
+  apply foo'.
   - admit.
   - admit.
-  - intros from.
+  - admit.
+  - intros from header. rewrite cap_correct. intros [hINo hINi]. apply find_block_in_inputs in hINi as [b bIN].
     rewrite denote_ocfg_unfold_in; cycle 1.
-    apply find_block_eq; reflexivity.
+    apply bIN.
     rewrite denote_ocfg_unfold_in; cycle 1.
-    apply find_block_eq; reflexivity.
+    assert (bIN': find_block [fusion A B] header = Some b). admit. apply bIN'.
     admit.
-
   - admit.
-
 Admitted.
