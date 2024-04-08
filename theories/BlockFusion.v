@@ -31,9 +31,10 @@ Lemma is_seq_correct:
   successors A = [B.(blk_id)].
 Proof.
   unfold is_seq. intros A B. split; intro SUC.
-  induction (successors A) as [|a l REC]. discriminate. induction l.
-  apply eqb_eq in SUC. now subst. discriminate.
-  rewrite SUC. now apply eqb_eq.
+  - induction (successors A) as [|a l REC].
+    discriminate. induction l.
+    apply eqb_eq in SUC. now subst. discriminate.
+  - rewrite SUC. now apply eqb_eq.
 Qed.
 
 Theorem Pattern_BlockFusion_correct {S}: forall A B G (P: Pattern S) X, wf_map_cfg G ->

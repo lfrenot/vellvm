@@ -111,11 +111,13 @@ Qed.
 
 #[global] Hint Resolve Proper_predecessor_aux : core.
 
-Lemma add_predecessor: forall (A B: blk) G G', wf_map_cfg G -> MapsTo_id A G ->
-  (predecessors B.(blk_id) (remove_id A G)) ≡ G' -> successors A = [B.(blk_id)] ->
+Lemma add_predecessor: forall (A B: blk) G G',
+  wf_map_cfg G -> MapsTo_id A G ->
+  successors A = [B.(blk_id)] ->
+  (predecessors B.(blk_id) (remove_id A G)) ≡ G' -> 
   (predecessors B.(blk_id) G) ≡ (add_id A G').
 Proof.
-  intros A B G G' WF MTA PRED SUC. rewrite Equal_mapsto_iff in PRED.
+  intros A B G G' WF MTA SUC PRED. rewrite Equal_mapsto_iff in PRED.
   setoid_rewrite filter_iff in PRED; auto.
   apply Equal_mapsto_iff. intros idC C. setoid_rewrite filter_iff; auto. split.
   - intros [MTC PREDC]. case (eq_dec A.(blk_id) idC); unfold eq; [intros EQ|intros NEQ].

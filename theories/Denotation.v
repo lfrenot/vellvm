@@ -162,6 +162,7 @@ End eutt_Notations.
 Import eutt_Notations.
 
 (* About denote_ocfg_prefix. *)
+
 (* Opaque denote_block. *)
 Lemma denote_ocfg_prefix_strong:
   forall (prefix bks' postfix : ocfg) [bks : ocfg] (from to : bid),
@@ -172,7 +173,8 @@ Lemma denote_ocfg_prefix_strong:
     match x_ with
       | inl x => ⟦ bks ⟧bs x
       | inr x => Ret (inr x)
-end.
+  end.
+Proof.
 Admitted.
 (* Transparent denote_block. *)
 (* Print denote_ocfg. *)

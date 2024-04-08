@@ -31,6 +31,7 @@ Definition CCstP {S} f (P:Pattern S) := (Branch P) when (fun '(B,_,_,_) => fixed
 Record CCstP_sem f (B: blk) G G' := {
   WF: wf_map_cfg G';
   EQ: G' = remove_id B G;
+  MT: MapsTo_id B G;
   AN: exists e l r, B.(blk_term) = TERM_Br e l r /\ (f e = Zero \/ f e = One)
 }.
 
@@ -46,7 +47,7 @@ Proof.
     rewrite BR in AN. repeat split; trivial. 2: exists e, l, r; split; trivial.
     * rewrite EQ. now apply remove_wf_map_cfg.
     * remember (f e) as a. induction a; try discriminate; auto.
-  - intros [G' [H [WF' EQ [e [l [r [EQT AN]]]]]]]. exists l, r.
+  - intros [G' [H [WF' MT EQ [e [l [r [EQT AN]]]]]]]. exists l, r.
     apply Pattern_When_correct. split; trivial.
     apply Pattern_Branch_correct; trivial. exists G'. repeat split; trivial.
     now exists e. unfold fixed_branch. rewrite EQT. destruct AN as [AN|AN]; now rewrite AN.
