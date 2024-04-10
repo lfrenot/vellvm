@@ -274,46 +274,62 @@ Proof.
 Admitted.
 
 Theorem denote_ocfg_equiv (g1 g2 g2' : ocfg) (σ : bk_renaming) :
-  let TO  := (outputs g1) ∩ (inputs g2)  in
+  let TO  := (outputs g1) ∩ (inputs g2) in
   let TO' := (outputs g1) ∩ (inputs g2') in
+  let nTO := inputs g2 ∖ TO in
   TO = TO' ->
   wf_ocfg_bid (g1 ++ g2) -> wf_ocfg_bid (ocfg_rename σ g1 ++ g2') ->
   dom_renaming σ (outs g2) (outs g2') ->
   denote_ocfg_equiv_cond g1 g2 g2' TO σ ->
-  forall from to,
-  List.In to (TO ++ inputs g1) ->
-  ⟦g1 ++ g2⟧bs (from,to) ≈ ⟦ocfg_rename σ g1 ++ g2'⟧bs (σ from, to).
+  forall from from' to,
+  from' = σ from ->
+  (* List.In to (TO ++ inputs g1) -> *)
+  ~ to ∈ nTO ->
+  ⟦g1 ++ g2⟧bs (from,to) ≈ ⟦ocfg_rename σ g1 ++ g2'⟧bs (from', to).
 Proof.
   einit.
   ecofix cih.
   clear cihH.
-  intros * EQ WF WFσ DOMσ. intros * hIN. intros * tIN'.
+  intros * EQ WF WFσ DOMσ. intros * hIN. intros * EQσ NIN.
+  remember ((outputs g1) ∩ (inputs g2)) as TO.
+  (* Either we are in the 'visible' graph or not. *)
+  case (raw_id_in to (TO ++ inputs g1)) as [tIN'|tNIN'].
   (* Either we enter g1 or not *)
-  pose proof (in_app_or _ _ _ tIN') as [tIN|tIN]; cycle 1.
-  - (* if we enter g1: then process [g1], and get back to the whole thing *)
-    assert (exists bk, find_block (g1 ++ g2) to = Some bk) as (bk & FIND) by admit.
-    rewrite denote_ocfg_unfold_in_eq_itree; [| exact FIND].
-    assert (exists bk', find_block (ocfg_rename σ g1 ++ g2') to = Some bk' /\
-                   bk' = bk_phi_rename σ bk) as (bk' & FIND' & EQ') by admit.
-    rewrite denote_ocfg_unfold_in_eq_itree; [| exact FIND'].
+  - pose proof (in_app_or _ _ _ tIN') as [tIN|tIN]; cycle 1.
+    * (* if we enter g1: then process [g1], and get back to the whole thing *)
+      assert (exists bk, find_block (g1 ++ g2) to = Some bk) as (bk & FIND) by admit.
+      rewrite denote_ocfg_unfold_in_eq_itree; [| exact FIND].
+      assert (exists bk', find_block (ocfg_rename σ g1 ++ g2') to = Some bk' /\
+                    bk' = bk_phi_rename σ bk) as (bk' & FIND' & EQ') by admit.
+      rewrite denote_ocfg_unfold_in_eq_itree; [| exact FIND'].
 
-   (* Then we start with a first block and then remaining of processing g1 *)
-    subst.
-    ebind.
-    econstructor.
-    apply bk_phi_rename_eutt.
-    intros [] ? <-.
-    + rewrite ? bind_tau.
-
-      assert (to = σ to) by admit.
-      etau.
-      ebase.
-      right.
-      (* Generalize goal with an equality to avoid issue with unification *)
+    (* Then we start with a first block and then remaining of processing g1 *)
+      (* subst. *)
+      ebind.
+      econstructor.
+      subst.
+      apply bk_phi_rename_eutt.
+      intros [] ? <-.
+      (* + rewrite ? bind_tau. *)
+      + assert (to = σ to) by admit.
+        etau.
+        ebase.
+        right.
+        apply cihL; auto.
+        (* Generalize goal with an equality to avoid issue with unification (DONE)*)
+        admit.
+      + eret. 
+    * subst TO. apply cap_correct in tIN as [tINo tINi].
+      rewrite (@denote_ocfg_prefix_eq_itree g1 g2 nil (g1 ++ g2) from to).
+      2, 3: admit.
+      rewrite (@denote_ocfg_prefix_eq_itree (ocfg_rename σ g1) g2' nil (ocfg_rename σ g1 ++ g2') from' to).
+      2, 3: admit.
       admit.
-    + admit.
-  - admit.
-
+  - rewrite denote_ocfg_unfold_not_in_eq_itree.
+    rewrite denote_ocfg_unfold_not_in_eq_itree.
+    assert (from = σ from) by admit.
+    subst. rewrite <- H. reflexivity.
+    admit. admit.
 
     (* pose proof find_block_in_inputs _ _ tIN as [bk FIND]. *)
     (* assert (exists bk', find_block (ocfg_rename σ g1) to = Some bk' /\ *)
