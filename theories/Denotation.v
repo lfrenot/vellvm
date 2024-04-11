@@ -75,18 +75,6 @@ Infix "∩" := cap (at level 10).
 
 Lemma cap_correct: forall {A} (x:A) (l l': list A), x ∈ (l ∩ l') <-> x ∈ l /\ x ∈ l'. Admitted.
 
-Theorem foo (g1 g2 g2' : ocfg) (header : bid) (σ : bk_renaming) from to :
-  incl (cap (outputs g1) (inputs g2)) [header] ->
-  dom_renaming σ (outs g2) (outs g2') ->
-  (forall origin,
-      eutt (sum_rel (fun '(from,to) '(from', to') => from' = σ from /\ to = to') Logic.eq)
-        (⟦g2⟧bs (origin, header)) (⟦g2'⟧bs (origin, header))) ->
-  List.In to (header ::: inputs g1) ->
-  ⟦g1 ++ g2⟧bs (from,to) ≈ ⟦ ocfg_rename σ g1 ++ g2'⟧bs (from, to).
-Proof.
-  intros * INCL DOMσ EQ IN.
-Admitted.
-
 Lemma bar G G' fto :
   ⟦map_cfg_to_ocfg G⟧bs fto ≈ ⟦map_cfg_to_ocfg G'⟧bs fto ->
   denotation_map_cfg G fto ≈ denotation_map_cfg G' fto.
@@ -245,8 +233,8 @@ Definition denote_ocfg_equiv_cond (g1 g2 g2': ocfg) (TO :list bid) (σ: bid -> b
   forall origin header,
     header ∈ TO ->
     eutt (post_ocfg g1 σ)
-      (⟦g2  ⟧bs (origin, header))
-      (⟦g2' ⟧bs (origin, header)).
+      (⟦g2 ⟧bs (origin, header))
+      (⟦g2'⟧bs (σ origin, header)).
 
 (* Definition denote_ocfg_equiv_cond (g1 g2 g2': ocfg) TO σ := *)
 (*   forall origin header, *)
@@ -259,6 +247,128 @@ Definition denote_ocfg_equiv_cond (g1 g2 g2': ocfg) (TO :list bid) (σ: bid -> b
 (*                   ⟦g2'⟧bs (origin, header) = Ret (inl (σ from, to))) *)
 (* . *)
 
+(*
+   x = φ(l1,e1)(l2,e2)
+   y = φ(l3,e3)(l4,e4)
+   ...
+ *)
+Lemma denote_phis_cons : forall b φ φs,
+                 ⟦φ :: φs⟧Φs b ≈
+                   v <- translate exp_to_instr (⟦φ⟧Φ b);;
+                 ⟦φs⟧Φs b;;
+                 Subevent.trigger (LocalWrite (fst v) (snd v))
+.
+Proof.
+  intros ???; revert φ; induction φs as [| φhd φs IH].
+  - intros [? []].
+    cbn.
+    rewrite ?bind_bind, ?bind_ret_l.
+    break_match_goal.
+    2:admit.
+    apply eutt_eq_bind.
+    intros [].
+    rewrite ?bind_bind, ?bind_ret_l.
+    cbn.
+    rewrite ?bind_bind, ?bind_ret_l.
+    repeat setoid_rewrite bind_ret_l.
+    match goal with
+      |- eutt _ _ ?t => rewrite <- (bind_ret_r t) at 2
+    end.
+    apply eutt_eq_bind.
+    intros []; reflexivity.
+  - intros [? []].
+    simpl.
+    match goal with
+      |- context[raise ?s] => generalize s
+    end.
+    intros s.
+    cbn.
+    match goal with
+      |- context[raise ?s] => generalize s
+    end.
+    intros s'.
+    rewrite ?bind_bind.
+    apply eutt_eq_bind.
+    intros [].
+    rewrite ?bind_bind, ?bind_ret_l.
+    cbn.
+    specialize (IH φhd).
+    cbn in IH.
+Admitted.
+
+(*
+
+block fusion: je sortais par b, je sors maintenant par a
+
+σ b = a
+
+σ : renaming map
+- domain: predecessors of (outputs g2) renamed
+          into (inputs of g2') (⊆ (inputs of g2))
+
+ici: σ sur le phi node peut renommer les labels en jeu,
+     mais si oui ne peut pas le renommer en un autre label en jeu.
+
+dom
+
+ *)
+
+Definition dom_phi (φ: phi dtyp) : list block_id.
+Admitted.
+
+Definition σφSafe σ φ : Prop :=
+   forall id, id ∈ (dom_phi φ) -> σ id = id \/ ~ (σ id ∈ (dom_phi φ)).
+
+Lemma denote_phi_rename σ φ
+  (Hsafe : σφSafe σ φ) :
+  forall x b, ⟦ (x, φ) ⟧Φ b ≈ ⟦ (x, phi_rename σ φ) ⟧Φ (σ b).
+Proof.
+  intros *. destruct φ as [τ φ].
+  induction φ as [| [id e] φ IH].
+  - reflexivity.
+  - cbn.
+    match goal with
+      |- context[raise ?s] => generalize s
+    end.
+    intros s.
+    destruct (RelDec.rel_dec b id) eqn:EQ.
+    + rewrite RelDec.rel_dec_correct in EQ; subst.
+      rewrite Util.eq_dec_eq.
+      reflexivity.
+    + rewrite <- RelDec.neg_rel_dec_correct in EQ.
+      assert (RelDec.rel_dec (σ b) (σ id) = false) by admit.
+      setoid_rewrite H.
+      apply IH.
+      admit.
+Admitted.
+
+Definition σφsSafe σ (φs : list (local_id * phi dtyp)) : Prop :=
+  List.Forall (fun '(_,φ) => σφSafe σ φ) φs.
+
+Lemma denote_phis_rename
+  φs σ from
+  (HSafe: σφsSafe σ φs) :
+  ⟦ φs ⟧Φs from ≈
+    denote_phis (σ from)
+    (List.map (fun '(x, φ) => (x, phi_rename σ φ)) φs).
+Proof.
+  induction φs as [| φ φs IH].
+  - cbn [List.map].
+    rewrite 2 denote_no_phis.
+    reflexivity.
+  - destruct φ.
+    rewrite denote_phis_cons.
+    setoid_rewrite IH.
+    cbn [List.map].
+    rewrite denote_phis_cons.
+    apply eutt_clo_bind with (UU := Logic.eq).
+    rewrite denote_phi_rename; [reflexivity |].
+    admit.
+    intros ?? <-.
+    reflexivity.
+    admit.
+Admitted.
+
 Lemma bk_phi_rename_eutt :
     forall bk σ from,
       (* dom_renaming σ (outs g2) (outs g2') -> *)
@@ -269,7 +379,7 @@ Proof.
   simpl.
   rewrite ?denote_block_unfold.
   eapply eutt_clo_bind.
-  cbn.
+
   eapply eutt_clo_bind.
 Admitted.
 
@@ -318,13 +428,46 @@ Proof.
         apply cihL; auto.
         (* Generalize goal with an equality to avoid issue with unification (DONE)*)
         admit.
-      + eret. 
-    * subst TO. apply cap_correct in tIN as [tINo tINi].
+      + eret.
+    * subst TO. generalize tIN; intros tmp; apply cap_correct in tmp as [tINo tINi].
       rewrite (@denote_ocfg_prefix_eq_itree g1 g2 nil (g1 ++ g2) from to).
       2, 3: admit.
       rewrite (@denote_ocfg_prefix_eq_itree (ocfg_rename σ g1) g2' nil (ocfg_rename σ g1 ++ g2') from' to).
       2, 3: admit.
-      admit.
+      ebind; econstructor.
+      clear - hIN; clear cihL.
+      unfold denote_ocfg_equiv_cond in hIN.
+      rewrite EQσ; apply hIN; auto.
+      intros [[] |] [[] |] INV; try now inv INV.
+      inv INV.
+      destruct H1 as (INV & <- & ->).
+      {
+        (* Extract a lemma? *)
+        (* if we enter g1: then process [g1], and get back to the whole thing *)
+        assert (exists bk, find_block (g1 ++ g2) b2 = Some bk) as (bk & FIND) by admit.
+        rewrite denote_ocfg_unfold_in_eq_itree; [| exact FIND].
+        assert (exists bk', find_block (ocfg_rename σ g1 ++ g2') b2 = Some bk' /\
+                         bk' = bk_phi_rename σ bk) as (bk' & FIND' & EQ') by admit.
+        rewrite denote_ocfg_unfold_in_eq_itree; [| exact FIND'].
+
+        (* Then we start with a first block and then remaining of processing g1 *)
+        (* subst. *)
+        ebind.
+        econstructor.
+        subst.
+        apply bk_phi_rename_eutt.
+        intros [] ? <-.
+        (* + rewrite ? bind_tau. *)
+        + assert (b2 = σ b2) by admit.
+          etau.
+          ebase.
+          right.
+          apply cihL; auto.
+          (* Generalize goal with an equality to avoid issue with unification (DONE)*)
+          admit.
+        + eret.
+      }
+
   - rewrite denote_ocfg_unfold_not_in_eq_itree.
     rewrite denote_ocfg_unfold_not_in_eq_itree.
     assert (from = σ from) by admit.
