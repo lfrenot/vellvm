@@ -313,17 +313,65 @@ dom
 
  *)
 
-Definition dom_phi (φ: phi dtyp) : list block_id.
-Admitted.
+Definition dom_phi (φ: phi dtyp) : list bid := match φ with
+  | Phi _ l => List.map (fun '(id, _) => id) l
+  end.
 
-Definition σφSafe σ φ : Prop :=
-   forall id, id ∈ (dom_phi φ) -> σ id = id \/ ~ (σ id ∈ (dom_phi φ)).
+(* Record σφSafe (σ: bid -> bid) (φ: phi dtyp) : Prop := {
+  σφSafe1: forall id id' e e',
+    match φ with |Phi _ l =>
+      (id, e) ∈ l -> (id', e') ∈ l -> σ id = σ id' -> e = e'
+    end;
+  σφSafe2: forall id id', id <> id' -> σ id = σ id' -> id ∈ (dom_phi φ) -> ~ id' ∈ (dom_phi φ)
+}. *)
+   (* ~ id ∈ (dom_phi φ) -> ~ σ id ∈ (dom_phi (phi_rename σ φ)); *)
+  (* σφSafe_norepet: Coqlib.list_norepet (dom_phi φ) *)
+   (* forall id, id ∈ (dom_phi φ) -> σ id = id \/ ~ (σ id ∈ (dom_phi φ)) *)
+
+
+Definition σφSafe (σ: bid -> bid) (φ: phi dtyp) : Prop := forall id id' e e', match φ with |Phi _ l =>
+  (id, e) ∈ l -> (id', e') ∈ l -> σ id = σ id' -> e = e'
+end.
+
+(* Definition σφSafe σ φ : Prop :=
+   forall id, id ∈ (dom_phi φ) -> σ id = id \/ ~ (σ id ∈ (dom_phi φ)). *)
+
+Lemma dom_phi_cons: forall φ τ id id' e, id ∈ (dom_phi (Phi τ φ)) -> id ∈ (dom_phi (Phi τ ((id', e) :: φ))).
+Proof.
+  intros *. unfold dom_phi. rewrite -> 2 in_map_iff.
+  intros [x [EQ IN]]. exists x.
+  split; trivial. now right.
+Qed.
+
+Lemma σφSafe_cons: forall σ (τ:dtyp) φ (id:bid) e, σφSafe σ (Phi τ ((id, e) :: φ)) -> σφSafe σ (Phi τ φ).
+Proof.
+  intros * SAFE id' * IN IN' EQ. eapply SAFE. 3: apply EQ. all: now right.
+Qed.
+
+Lemma assoc_in: forall (b:bid) (e: exp dtyp) (φ : list (bid * exp dtyp)), Util.assoc b φ = Some e -> (b, e) ∈ φ.
+Proof.
+  intros *. induction φ as [|(b', e') φ IH]; intro H.
+  - inversion H.
+  - inversion H. break_match_hyp.
+    * inversion H1. rewrite RelDec.rel_dec_correct in Heqb0; subst. now left.
+    * right. now apply IH.
+Qed.
+
+Lemma assoc_nin: forall (b: bid) (φ: list (bid * exp dtyp)), Util.assoc b φ = None -> forall e, ~ (b, e) ∈ φ.
+Proof.
+  intros. induction φ as [|(b', e') φ IH]. auto.
+  inversion H. break_match_hyp. discriminate.
+  apply RelDec.neg_rel_dec_correct in Heqb0.
+  intros [EQ|IN]. apply pair_equal_spec in EQ as []. auto.
+  now apply IH.
+Qed.
 
 Lemma denote_phi_rename σ φ
   (Hsafe : σφSafe σ φ) :
-  forall x b, ⟦ (x, φ) ⟧Φ b ≈ ⟦ (x, phi_rename σ φ) ⟧Φ (σ b).
+  forall x b, (b ∈ (dom_phi φ) \/ ~σ b ∈ (dom_phi (phi_rename σ φ)))
+  ->  ⟦ (x, φ) ⟧Φ b ≈ ⟦ (x, phi_rename σ φ) ⟧Φ (σ b).
 Proof.
-  intros *. destruct φ as [τ φ].
+  intros * WF. destruct φ as [τ φ].
   induction φ as [| [id e] φ IH].
   - reflexivity.
   - cbn.
@@ -332,15 +380,30 @@ Proof.
     end.
     intros s.
     destruct (RelDec.rel_dec b id) eqn:EQ.
-    + rewrite RelDec.rel_dec_correct in EQ; subst.
+    2: destruct (RelDec.rel_dec (σ b) (σ id)) eqn: EQ'.
+    * rewrite RelDec.rel_dec_correct in EQ; subst.
       rewrite Util.eq_dec_eq.
       reflexivity.
-    + rewrite <- RelDec.neg_rel_dec_correct in EQ.
-      assert (RelDec.rel_dec (σ b) (σ id) = false) by admit.
-      setoid_rewrite H.
-      apply IH.
-      admit.
-Admitted.
+    * unfold σφSafe in Hsafe. break_match_goal. 2: destruct WF as [IN|NIN].
+      + apply assoc_in in Heqo. replace e with e0. reflexivity.
+        eapply Hsafe.
+        right. apply Heqo.
+        now left.
+        now rewrite RelDec.rel_dec_correct in EQ'.
+      + pose proof assoc_nin _ _ Heqo.
+        unfold dom_phi in IN. destruct IN as [EQ0|IN].
+        -- rewrite <- RelDec.neg_rel_dec_correct in EQ. now subst.
+        -- apply in_map_iff in IN as ([id' e'] & <- & IN).
+           contradict IN. apply H.
+      + rewrite RelDec.rel_dec_correct in EQ'.
+        contradict NIN. rewrite EQ'.
+        now left.
+    * apply IH. 2: destruct WF as [IN|NIN].
+      + eapply σφSafe_cons. apply Hsafe.
+      + left. rewrite <- RelDec.neg_rel_dec_correct in EQ.
+        apply in_inv in IN as [EQ0|IN]. now subst. trivial.
+      + right. intro. apply NIN. now right.
+Qed.
 
 Definition σφsSafe σ (φs : list (local_id * phi dtyp)) : Prop :=
   List.Forall (fun '(_,φ) => σφSafe σ φ) φs.
@@ -362,12 +425,12 @@ Proof.
     cbn [List.map].
     rewrite denote_phis_cons.
     apply eutt_clo_bind with (UU := Logic.eq).
-    rewrite denote_phi_rename; [reflexivity |].
-    admit.
+    rewrite denote_phi_rename; [reflexivity |]. 
+    now inversion HSafe.
     intros ?? <-.
     reflexivity.
-    admit.
-Admitted.
+    now inversion HSafe.
+Qed.
 
 Lemma bk_phi_rename_eutt :
     forall bk σ from,
