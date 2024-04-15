@@ -329,12 +329,17 @@ Definition dom_phi (φ: phi dtyp) : list bid := match φ with
    (* forall id, id ∈ (dom_phi φ) -> σ id = id \/ ~ (σ id ∈ (dom_phi φ)) *)
 
 
-Definition σφSafe (σ: bid -> bid) (φ: phi dtyp) : Prop := forall id id' e e', match φ with |Phi _ l =>
+(* Definition σφSafe (σ: bid -> bid) (φ: phi dtyp) : Prop := forall id id' e e', match φ with |Phi _ l =>
   (id, e) ∈ l -> (id', e') ∈ l -> σ id = σ id' -> e = e'
-end.
+end. *)
 
-(* Definition σφSafe σ φ : Prop :=
-   forall id, id ∈ (dom_phi φ) -> σ id = id \/ ~ (σ id ∈ (dom_phi φ)). *)
+Record σφSafe (σ: bid -> bid) (φ: phi dtyp) (from: bid) := {
+  EQ: forall id id' e e', match φ with |Phi _ l =>
+      (id, e) ∈ l -> (id', e') ∈ l -> σ id = σ id' -> e = e'
+      end;
+  IN: σ from ∈ (dom_phi (phi_rename σ φ)) -> from ∈ (dom_phi φ)
+}.
+  (* σ from ∈ (dom_phi (phi_rename σ φ)) -> from ∈ (dom_phi φ). *)
 
 Lemma dom_phi_cons: forall φ τ id id' e, id ∈ (dom_phi (Phi τ φ)) -> id ∈ (dom_phi (Phi τ ((id', e) :: φ))).
 Proof.
@@ -343,9 +348,20 @@ Proof.
   split; trivial. now right.
 Qed.
 
-Lemma σφSafe_cons: forall σ (τ:dtyp) φ (id:bid) e, σφSafe σ (Phi τ ((id, e) :: φ)) -> σφSafe σ (Phi τ φ).
+Lemma dom_phi_cons2: forall φ τ id id' e, id <> id' -> id ∈ (dom_phi (Phi τ ((id', e) :: φ))) -> id ∈ (dom_phi (Phi τ φ)).
 Proof.
-  intros * SAFE id' * IN IN' EQ. eapply SAFE. 3: apply EQ. all: now right.
+  intros * NEQ. unfold dom_phi. rewrite -> 2 in_map_iff.
+  intros [[id0 e0] [-> IN]]. exists (id, e0).
+  split; trivial. destruct IN as [EQ'|IN].
+  apply pair_equal_spec in EQ' as []. now subst. trivial.
+Qed.
+
+Lemma σφSafe_cons: forall σ (τ:dtyp) φ (id:bid) e b, b <> id -> σφSafe σ (Phi τ ((id, e) :: φ)) b -> σφSafe σ (Phi τ φ) b.
+Proof.
+  intros * NEQ [SAFE1 SAFE2]. split.
+  - intros * IN IN' EQ. eapply SAFE1. 3: apply EQ. all: now right.
+  - intro H. eapply dom_phi_cons2; cycle 1.
+    apply SAFE2. now apply dom_phi_cons. trivial.
 Qed.
 
 Lemma assoc_in: forall (b:bid) (e: exp dtyp) (φ : list (bid * exp dtyp)), Util.assoc b φ = Some e -> (b, e) ∈ φ.
@@ -366,12 +382,11 @@ Proof.
   now apply IH.
 Qed.
 
-Lemma denote_phi_rename σ φ
-  (Hsafe : σφSafe σ φ) :
-  forall x b, (b ∈ (dom_phi φ) \/ ~σ b ∈ (dom_phi (phi_rename σ φ)))
-  ->  ⟦ (x, φ) ⟧Φ b ≈ ⟦ (x, phi_rename σ φ) ⟧Φ (σ b).
+Lemma denote_phi_rename σ φ b
+  (SAFE : σφSafe σ φ b):
+  forall x, ⟦ (x, φ) ⟧Φ b ≈ ⟦ (x, phi_rename σ φ) ⟧Φ (σ b).
 Proof.
-  intros * WF. destruct φ as [τ φ].
+  intros *. destruct φ as [τ φ].
   induction φ as [| [id e] φ IH].
   - reflexivity.
   - cbn.
@@ -384,33 +399,36 @@ Proof.
     * rewrite RelDec.rel_dec_correct in EQ; subst.
       rewrite Util.eq_dec_eq.
       reflexivity.
-    * unfold σφSafe in Hsafe. break_match_goal. 2: destruct WF as [IN|NIN].
+    * destruct SAFE as [SAFE1 SAFE2]. break_match_goal. (*2: destruct WF as [IN|NIN].*)
       + apply assoc_in in Heqo. replace e with e0. reflexivity.
-        eapply Hsafe.
+        eapply SAFE1.
         right. apply Heqo.
         now left.
         now rewrite RelDec.rel_dec_correct in EQ'.
       + pose proof assoc_nin _ _ Heqo.
-        unfold dom_phi in IN. destruct IN as [EQ0|IN].
-        -- rewrite <- RelDec.neg_rel_dec_correct in EQ. now subst.
-        -- apply in_map_iff in IN as ([id' e'] & <- & IN).
-           contradict IN. apply H.
-      + rewrite RelDec.rel_dec_correct in EQ'.
-        contradict NIN. rewrite EQ'.
-        now left.
-    * apply IH. 2: destruct WF as [IN|NIN].
-      + eapply σφSafe_cons. apply Hsafe.
-      + left. rewrite <- RelDec.neg_rel_dec_correct in EQ.
-        apply in_inv in IN as [EQ0|IN]. now subst. trivial.
-      + right. intro. apply NIN. now right.
+        rewrite <- RelDec.neg_rel_dec_correct in EQ.
+        rewrite RelDec.rel_dec_correct in EQ'.
+        assert (exists e', (b, e') ∈ φ) as (e' & H'). {
+          apply in_map_iff in SAFE2 as [[b' e'] [-> IN]].
+          destruct IN as [EQb|IN].
+          - apply pair_equal_spec in EQb as []. now subst.
+          - now exists e'.
+          - now left.
+        }
+        now apply H in H'.
+    * rewrite <- RelDec.neg_rel_dec_correct in EQ. apply IH.
+      eapply σφSafe_cons. apply EQ. apply SAFE.
 Qed.
 
-Definition σφsSafe σ (φs : list (local_id * phi dtyp)) : Prop :=
-  List.Forall (fun '(_,φ) => σφSafe σ φ) φs.
+Definition σφsSafe σ (φs : list (local_id * phi dtyp)) from : Prop :=
+  List.Forall (fun '(_,φ) => σφSafe σ φ from) φs.
+
+(* Definition σφsfSafe σ (φs : list (local_id * phi dtyp)) from: Prop :=
+  List.Forall (fun '(_,φ) => σφfSafe σ φ from) φs. *)
 
 Lemma denote_phis_rename
   φs σ from
-  (HSafe: σφsSafe σ φs) :
+  (HSafe: σφsSafe σ φs from):
   ⟦ φs ⟧Φs from ≈
     denote_phis (σ from)
     (List.map (fun '(x, φ) => (x, phi_rename σ φ)) φs).
@@ -433,18 +451,33 @@ Proof.
 Qed.
 
 Lemma bk_phi_rename_eutt :
-    forall bk σ from,
+    forall bk σ from, σφsSafe σ bk.(blk_phis) from ->
       (* dom_renaming σ (outs g2) (outs g2') -> *)
       ⟦ bk ⟧b from ≈ ⟦ bk_phi_rename σ bk ⟧b (σ from).
 Proof.
-  intros [] ? ?.
+  intros [] SAFE ? ?.
   unfold bk_phi_rename.
   simpl.
   rewrite ?denote_block_unfold.
   eapply eutt_clo_bind.
+  rewrite denote_phis_rename.
+  reflexivity. apply H.
+  intros ? ? <-. reflexivity.
+Qed.
 
-  eapply eutt_clo_bind.
-Admitted.
+Lemma find_block_some_ocfg_rename: forall g id b σ,
+  find_block g id = Some b ->
+  find_block (ocfg_rename σ g) id = Some (bk_phi_rename σ b).
+Proof.
+  induction g as [| b' g IH]. now cbn.
+  intros * FIND.
+  (* unfold find_block, List.find in IH. *)
+  unfold find_block, List.find in FIND.
+  unfold find_block, List.find.
+  break_match_hyp.
+  - cbn. rewrite Heqb0. now inversion FIND.
+  - cbn. rewrite Heqb0. apply IH. apply FIND.
+Qed.
 
 Theorem denote_ocfg_equiv (g1 g2 g2' : ocfg) (σ : bk_renaming) :
   let TO  := (outputs g1) ∩ (inputs g2) in
@@ -463,17 +496,18 @@ Proof.
   einit.
   ecofix cih.
   clear cihH.
-  intros * EQ WF WFσ DOMσ. intros * hIN. intros * EQσ NIN.
+  intros * EQ WF WFσ DOMσ * hIN * EQσ NIN.
   remember ((outputs g1) ∩ (inputs g2)) as TO.
   (* Either we are in the 'visible' graph or not. *)
   case (raw_id_in to (TO ++ inputs g1)) as [tIN'|tNIN'].
   (* Either we enter g1 or not *)
   - pose proof (in_app_or _ _ _ tIN') as [tIN|tIN]; cycle 1.
     * (* if we enter g1: then process [g1], and get back to the whole thing *)
-      assert (exists bk, find_block (g1 ++ g2) to = Some bk) as (bk & FIND) by admit.
+      pose proof find_block_in_inputs _ _ tIN as [bk tFIND].
+      pose proof find_block_some_app g1 g2 _ tFIND as FIND.
       rewrite denote_ocfg_unfold_in_eq_itree; [| exact FIND].
-      assert (exists bk', find_block (ocfg_rename σ g1 ++ g2') to = Some bk' /\
-                    bk' = bk_phi_rename σ bk) as (bk' & FIND' & EQ') by admit.
+      pose proof find_block_some_ocfg_rename _ _ _ σ tFIND as FINDσ.
+      pose proof find_block_some_app _ g2' _ FINDσ as FIND'.
       rewrite denote_ocfg_unfold_in_eq_itree; [| exact FIND'].
 
     (* Then we start with a first block and then remaining of processing g1 *)
@@ -482,9 +516,15 @@ Proof.
       econstructor.
       subst.
       apply bk_phi_rename_eutt.
+      admit.
       intros [] ? <-.
       (* + rewrite ? bind_tau. *)
-      + assert (to = σ to) by admit.
+      + assert (to = σ to). {
+          destruct DOMσ as [in_dom out_dom].
+          symmetry. apply out_dom. unfold outs.
+          (* Search inputs app. *)
+          eapply wf_ocfg_app_not_in_r. apply tIN. now apply wf_ocfg_commut.
+        }
         etau.
         ebase.
         right.
@@ -493,24 +533,25 @@ Proof.
         admit.
       + eret.
     * subst TO. generalize tIN; intros tmp; apply cap_correct in tmp as [tINo tINi].
-      rewrite (@denote_ocfg_prefix_eq_itree g1 g2 nil (g1 ++ g2) from to).
-      2, 3: admit.
-      rewrite (@denote_ocfg_prefix_eq_itree (ocfg_rename σ g1) g2' nil (ocfg_rename σ g1 ++ g2') from' to).
-      2, 3: admit.
+      rewrite (@denote_ocfg_prefix_eq_itree g1 g2 nil (g1 ++ g2) from to); cycle 1.
+      now rewrite app_nil_r. trivial.
+      rewrite (@denote_ocfg_prefix_eq_itree (ocfg_rename σ g1) g2' nil (ocfg_rename σ g1 ++ g2') from' to); cycle 1.
+      now rewrite app_nil_r. trivial.
       ebind; econstructor.
       clear - hIN; clear cihL.
       unfold denote_ocfg_equiv_cond in hIN.
       rewrite EQσ; apply hIN; auto.
       intros [[] |] [[] |] INV; try now inv INV.
       inv INV.
-      destruct H1 as (INV & <- & ->).
-      {
+      destruct H1 as (INV & <- & ->). {
         (* Extract a lemma? *)
         (* if we enter g1: then process [g1], and get back to the whole thing *)
-        assert (exists bk, find_block (g1 ++ g2) b2 = Some bk) as (bk & FIND) by admit.
+        (* assert (exists bk, find_block (g1 ++ g2) b2 = Some bk) as (bk & FIND) by admit. *)
+        pose proof find_block_in_inputs _ _ INV as [bk tFIND].
+        pose proof find_block_some_app g1 g2 _ tFIND as FIND.
         rewrite denote_ocfg_unfold_in_eq_itree; [| exact FIND].
-        assert (exists bk', find_block (ocfg_rename σ g1 ++ g2') b2 = Some bk' /\
-                         bk' = bk_phi_rename σ bk) as (bk' & FIND' & EQ') by admit.
+        pose proof find_block_some_ocfg_rename _ _ _ σ tFIND as FINDσ.
+        pose proof find_block_some_app _ g2' _ FINDσ as FIND'.
         rewrite denote_ocfg_unfold_in_eq_itree; [| exact FIND'].
 
         (* Then we start with a first block and then remaining of processing g1 *)
@@ -519,9 +560,15 @@ Proof.
         econstructor.
         subst.
         apply bk_phi_rename_eutt.
+        admit.
         intros [] ? <-.
         (* + rewrite ? bind_tau. *)
-        + assert (b2 = σ b2) by admit.
+        + assert (b2 = σ b2). {
+            destruct DOMσ as [in_dom out_dom].
+            symmetry. apply out_dom. unfold outs.
+            (* Search inputs app. *)
+            eapply wf_ocfg_app_not_in_r. apply INV. now apply wf_ocfg_commut.
+          }
           etau.
           ebase.
           right.
@@ -530,10 +577,9 @@ Proof.
           admit.
         + eret.
       }
-
   - rewrite denote_ocfg_unfold_not_in_eq_itree.
     rewrite denote_ocfg_unfold_not_in_eq_itree.
-    assert (from = σ from) by admit.
+    assert (from = σ from) by admit. (*Faux admit?*)
     subst. rewrite <- H. reflexivity.
     admit. admit.
 
