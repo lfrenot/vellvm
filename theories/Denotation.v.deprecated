@@ -67,13 +67,20 @@ Record dom_renaming (σ : bk_renaming) (from to : list bid) : Prop :=
 
 (* Nodes that may exit the graph *)
 
-Definition outs (g : ocfg) : list bid := inputs g.
+Definition outs (g : ocfg) : list bid := flat_map (fun b => Scope.predecessors b g) (outputs g).
+(* inputs g. *)
 
 Definition cap {A}: list A -> list A -> list A. Admitted.
 
 Infix "∩" := cap (at level 10).
 
 Lemma cap_correct: forall {A} (x:A) (l l': list A), x ∈ (l ∩ l') <-> x ∈ l /\ x ∈ l'. Admitted.
+
+Definition set_minus {A}: list A -> list A -> list A. Admitted.
+
+Infix "\" := set_minus (at level 10).
+
+Lemma set_minus_correct: forall {A} (x:A) (l l': list A), x ∈ (l \ l') <-> x ∈ l /\ ~ x ∈ l'. Admitted.
 
 Lemma bar G G' fto :
   ⟦map_cfg_to_ocfg G⟧bs fto ≈ ⟦map_cfg_to_ocfg G'⟧bs fto ->
@@ -479,10 +486,13 @@ Proof.
   - cbn. rewrite Heqb0. apply IH. apply FIND.
 Qed.
 
+Definition σbksSafe σ (g: ocfg) from : Prop :=
+  List.Forall (fun x => σφsSafe σ (x.(blk_phis)) from) g.
+
 Theorem denote_ocfg_equiv (g1 g2 g2' : ocfg) (σ : bk_renaming) :
   let TO  := (outputs g1) ∩ (inputs g2) in
   let TO' := (outputs g1) ∩ (inputs g2') in
-  let nTO := inputs g2 ∖ TO in
+  let nTO := inputs g2 \ TO in
   TO = TO' ->
   wf_ocfg_bid (g1 ++ g2) -> wf_ocfg_bid (ocfg_rename σ g1 ++ g2') ->
   dom_renaming σ (outs g2) (outs g2') ->
@@ -490,13 +500,13 @@ Theorem denote_ocfg_equiv (g1 g2 g2' : ocfg) (σ : bk_renaming) :
   forall from from' to,
   from' = σ from ->
   (* List.In to (TO ++ inputs g1) -> *)
-  ~ to ∈ nTO ->
+  ~ to ∈ nTO -> ~ from ∈ nTO -> σbksSafe σ g1 from ->
   ⟦g1 ++ g2⟧bs (from,to) ≈ ⟦ocfg_rename σ g1 ++ g2'⟧bs (from', to).
 Proof.
-  einit.
+  einit. 
   ecofix cih.
   clear cihH.
-  intros * EQ WF WFσ DOMσ * hIN * EQσ NIN.
+  intros * EQ WF WFσ DOMσ * hIN * EQσ tNIN fNIN SAFE.
   remember ((outputs g1) ∩ (inputs g2)) as TO.
   (* Either we are in the 'visible' graph or not. *)
   case (raw_id_in to (TO ++ inputs g1)) as [tIN'|tNIN'].
@@ -515,8 +525,11 @@ Proof.
       ebind.
       econstructor.
       subst.
-      apply bk_phi_rename_eutt.
-      admit.
+      apply bk_phi_rename_eutt. {
+        unfold σφsSafe. apply Forall_forall. intros [e φ] IN. split.
+        admit.
+      }
+      (* admit. *)
       intros [] ? <-.
       (* + rewrite ? bind_tau. *)
       + assert (to = σ to). {

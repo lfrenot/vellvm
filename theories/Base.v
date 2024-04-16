@@ -1,18 +1,19 @@
 (** This file defines an FMap that uses block_ids as keys. *)
 
-From Vellvm Require Import Syntax ScopeTheory Semantics.
-From ITree Require Import ITree Eq.
-From Pattern Require Import IdModule.
+From Vellvm Require Import Syntax.
+Require Import List.
+(* From ITree Require Import ITree Eq. *)
+(* From Pattern Require Import IdModule.
 Require Import FSets.FMapAVL FSets.FMapFacts.
 Require Import List.
 Import ListNotations.
-Import IdOT.
+Import IdOT. *)
 
 (** Define the Map and import the functions and lemmas to work with it. *)
-Module Map := FMapAVL.Make(IdOT).
+(* Module Map := FMapAVL.Make(IdOT).
 Module MapF := FMapFacts.OrdProperties Map.
 
-Import Map MapF MapF.P MapF.P.F.
+Import Map MapF MapF.P MapF.P.F. *)
 
 (** * Notations used throughout the proofs.
     
@@ -22,7 +23,7 @@ Notation blk := (block dtyp).
 Notation bid := block_id.
 Notation ocfg := (ocfg dtyp).
 
-Notation map_cfg := (Map.t blk).
+(* Notation map_cfg := (Map.t blk).
 Notation empty := (Map.empty blk).
 
 Infix "∈" := List.In (at level 10).
@@ -35,14 +36,14 @@ Notation add_id b := (add b.(blk_id) b).
 Notation remove_id b := (remove b.(blk_id)).
 Notation MapsTo_id b := (MapsTo b.(blk_id) b).
 
-Notation single b := (add_id b empty).
+Notation single b := (add_id b empty). *)
 
 (** * wf_map_cfg
 
   In this section we introduce a well-formedness condition on map_cfgs,
   which is that a block is mapped on its id.*)
 
-Definition wf_map_cfg (g: map_cfg) := forall id b, MapsTo id b g -> b.(blk_id) = id.
+(* Definition wf_map_cfg (g: map_cfg) := forall id b, MapsTo id b g -> b.(blk_id) = id.
 
 Lemma add_wf_map_cfg: forall id b g, ~In id g -> wf_map_cfg (add id b g) -> wf_map_cfg g.
 Proof.
@@ -79,11 +80,11 @@ Proof.
   assert (B.(blk_id)=A.(blk_id)) by now apply WF.
   assert (A.(blk_id)=idA) by now apply WF. subst.
   eapply MapsTo_fun. apply MTA. trivial.
-Qed.
+Qed. *)
 
 (** * This section contains additional manipulations on Maps. *)
 
-Lemma remove_add_elim:
+(* Lemma remove_add_elim:
   forall id B (G: map_cfg), ~In id G -> G ≡ (remove id (add id B G)).
 Proof.
   intros idB B G NIN. apply Equal_mapsto_iff. intros idA A.
@@ -126,7 +127,7 @@ Qed.
 Lemma Below_nIn: forall id (G:map_cfg), Below id G -> ~ In id G.
 Proof.
   intros id G HB HI. eapply lt_not_eq. apply HB. apply HI. reflexivity.
-Qed.
+Qed. *)
 
 (** Bellow are lemmas that are not used anymore, they may be removed later. *)
 
