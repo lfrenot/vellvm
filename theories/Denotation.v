@@ -35,21 +35,21 @@ Definition fusion (A B: blk): blk := {|
 (* Import SemNotations. *)
 (* todo better representation*)
 Definition bk_renaming := bid -> bid.
+From stdpp Require Import prelude fin_maps.
 
 Definition phi_rename (σ : bk_renaming) (ϕ:  phi dtyp): phi dtyp :=
   match ϕ with
-    | Phi τ exps => Phi τ (fmap (fun '(id,e) => (σ id, e)) exps)
+    | Phi τ exps => Phi τ (kmap σ exps)
   end.
 
 Definition bk_phi_rename (σ : bk_renaming) (b: blk): blk := {|
-  blk_id         := b.(blk_id);
   blk_phis       := List.map (fun '(x,φ) => (x,phi_rename σ φ)) b.(blk_phis);
   blk_code       := b.(blk_code);
   blk_term       := b.(blk_term);
   blk_comments   := b.(blk_comments)
 |}.
 
-Definition ocfg_rename (σ : bk_renaming) (g: ocfg): ocfg := List.map (bk_phi_rename σ) g.
+Definition ocfg_rename (σ : bk_renaming) (g: ocfg): ocfg := fmap (bk_phi_rename σ) g.
 
 Record dom_renaming (σ : bk_renaming) (from to : list bid) : Prop :=
   {
@@ -59,84 +59,67 @@ Record dom_renaming (σ : bk_renaming) (from to : list bid) : Prop :=
 
 (* Nodes that may exit the graph *)
 
-Definition outs (g : ocfg) : list bid := flat_map (fun b => Scope.predecessors b g) (outputs g).
+Definition outgoing_bks (g : ocfg) : gset bid :=
+  set_fold (fun id acc => predecessors id g ∪ acc) ∅ (outputs g).
+
 (* inputs g. *)
 
-Definition cap {A}: list A -> list A -> list A. Admitted.
+Module Type DenotationTheory (LP : LLVMParams.LLVMParams).
+  Module D := Denotation LP.
+  Import D.
+  Import LP.
 
-Infix "∩" := cap (at level 10).
+  Variant hidden_cfg  (T: Type) : Type := boxh_cfg (t: T).
+  Variant visible_cfg (T: Type) : Type := boxv_cfg (t: T).
+  Ltac hide_cfg :=
+    match goal with
+    | h : visible_cfg _ |- _ =>
+        let EQ := fresh "VG" in
+        destruct h as [EQ];
+        apply boxh_cfg in EQ
+    | |- context[denote_ocfg ?cfg _] =>
+        remember cfg as G eqn:VG;
+        apply boxh_cfg in VG
+    end.
+  Ltac show_cfg :=
+    match goal with
+    | h: hidden_cfg _ |- _ =>
+        let EQ := fresh "HG" in
+        destruct h as [EQ];
+        apply boxv_cfg in EQ
+    end.
+  Notation "'hidden' G" := (hidden_cfg (G = _)) (only printing, at level 10).
 
-Lemma cap_correct: forall {A} (x:A) (l l': list A), x ∈ (l ∩ l') <-> x ∈ l /\ x ∈ l'. Admitted.
+  (* Ltac solve_find_block := *)
+  (*   cbn; *)
+  (*   match goal with *)
+  (*   (* If the [ocfg] contains a single block, we are done exactly if it has the id we are looking for *) *)
+  (*   | |- find_block [_] _ = _ => apply find_block_eq; reflexivity *)
+  (*   (* Otherwise, if the [ocfg] has a head block, we: *) *)
+  (*   (*      - first check if that's the one we are looking for *) *)
+  (*   (*      - otherwise dismiss it, focus our well-formedness hypothesis similarly, and continue recursively. *) *)
+  (*   (*      - if it is instead built by appending two sub-graphs, we call ourselves recursively in each branch, *) *)
+  (*   (*      and don't forget to shape the well-formedness hypothesis in each case beforehand. *) *)
+  (*   (*    *) *)
+  (*   | h: wf_ocfg_bid _ |- find_block (_ :: _) _ = _ => *)
+  (*       first [apply find_block_eq; reflexivity | *)
+  (*               apply find_block_tail_wf; [eassumption | apply wf_ocfg_bid_cons in h; solve_find_block]] *)
+  (*   | h: wf_ocfg_bid _ |- find_block (_ ++ _) _ = _ => *)
+  (*       first [apply find_block_app_l_wf; [eassumption | apply wf_ocfg_bid_app_l in h; solve_find_block] | *)
+  (*               apply find_block_app_r_wf; [eassumption | apply wf_ocfg_bid_app_r in h; solve_find_block]] *)
+  (*   end. *)
 
-Definition set_minus {A}: list A -> list A -> list A. Admitted.
-
-Infix "\" := set_minus (at level 10).
-
-Lemma set_minus_correct: forall {A} (x:A) (l l': list A), x ∈ (l \ l') <-> x ∈ l /\ ~ x ∈ l'. Admitted.
-
-Lemma bar G G' fto :
-  ⟦map_cfg_to_ocfg G⟧bs fto ≈ ⟦map_cfg_to_ocfg G'⟧bs fto ->
-  denotation_map_cfg G fto ≈ denotation_map_cfg G' fto.
-Admitted.
-
-Lemma blk_dec : forall x y : blk, {x = y} + {x <> y}.
-Admitted.
-Definition rm_bk := List.remove blk_dec.
-
-Import DenotationTheoryBigIntptr.
-
-Variant hidden_cfg  (T: Type) : Type := boxh_cfg (t: T).
-Variant visible_cfg (T: Type) : Type := boxv_cfg (t: T).
-Ltac hide_cfg :=
-  match goal with
-  | h : visible_cfg _ |- _ =>
-    let EQ := fresh "VG" in
-    destruct h as [EQ];
-    apply boxh_cfg in EQ
-  | |- context[denote_ocfg ?cfg _] =>
-    remember cfg as G eqn:VG;
-    apply boxh_cfg in VG
-  end.
-Ltac show_cfg :=
-  match goal with
-  | h: hidden_cfg _ |- _ =>
-    let EQ := fresh "HG" in
-    destruct h as [EQ];
-    apply boxv_cfg in EQ
-  end.
-Notation "'hidden' G" := (hidden_cfg (G = _)) (only printing, at level 10).
-
-Ltac solve_find_block :=
-  cbn;
-  match goal with
-  (* If the [ocfg] contains a single block, we are done exactly if it has the id we are looking for *)
-    | |- find_block [_] _ = _ => apply find_block_eq; reflexivity
-  (* Otherwise, if the [ocfg] has a head block, we: *)
-(*      - first check if that's the one we are looking for *)
-(*      - otherwise dismiss it, focus our well-formedness hypothesis similarly, and continue recursively. *)
-(*      - if it is instead built by appending two sub-graphs, we call ourselves recursively in each branch, *)
-(*      and don't forget to shape the well-formedness hypothesis in each case beforehand. *)
-(*    *)
-    | h: wf_ocfg_bid _ |- find_block (_ :: _) _ = _ =>
-      first [apply find_block_eq; reflexivity |
-             apply find_block_tail_wf; [eassumption | apply wf_ocfg_bid_cons in h; solve_find_block]]
-    | h: wf_ocfg_bid _ |- find_block (_ ++ _) _ = _ =>
-      first [apply find_block_app_l_wf; [eassumption | apply wf_ocfg_bid_app_l in h; solve_find_block] |
-             apply find_block_app_r_wf; [eassumption | apply wf_ocfg_bid_app_r in h; solve_find_block]]
-  end.
-
-Ltac vjmp :=
-  rewrite denote_ocfg_unfold_in; cycle 1;
-  [match goal with
-   | h: hidden_cfg _ |- _ => inv h
-   | h: visible_cfg _ |- _ => inv h
-   | _ => idtac
-   end;
-   cbn; rewrite ?convert_typ_ocfg_app;
-   try solve_find_block |].
+  (* Ltac vjmp := *)
+  (*   rewrite denote_ocfg_unfold_in; cycle 1; *)
+  (*   [match goal with *)
+  (*    | h: hidden_cfg _ |- _ => inv h *)
+  (*    | h: visible_cfg _ |- _ => inv h *)
+  (*    | _ => idtac *)
+  (*    end; *)
+  (*    cbn; rewrite ?convert_typ_ocfg_app; *)
+  (*    try solve_find_block |]. *)
 
 Import ITree.
-Import ITreeNotations.
 
 
 Module eutt_Notations.
@@ -171,53 +154,21 @@ ebind : use up-to bind
 
  *)
 
+Import SemNotations.
+Import MonadNotation.
+Import Events.DV.
+
 Lemma denote_ocfg_prefix_eq_itree:
   forall (prefix bks' postfix : ocfg) [bks : ocfg] (from to : bid),
-    bks = prefix ++ bks' ++ postfix ->
-    wf_ocfg_bid bks ->
+    bks = prefix ∪ bks' ∪ postfix ->
     ⟦ bks ⟧bs (from, to) ≅
-        x_ <- ⟦ bks' ⟧bs (from, to);;
+    x_ <- ⟦ bks' ⟧bs (from, to);
     match x_ with
       | inl x => ⟦ bks ⟧bs x
       | inr x => Ret (inr x)
   end.
 Proof.
-    intros * ->; revert from to.
-    ginit.
-    gcofix CIH.
-    (* Trouver un certain R, qui contient ton but, et qui est bien «coinductive», c'est à dire forward closed *)
-
-    intros * WF.
-
-    destruct (find_block bks' to) as [bk |] eqn:EQ.
-    -
-      assert (find_block (prefix ++ bks' ++ postfix) to = Some bk).
-      {
-        erewrite find_block_app_r_wf; eauto.
-        erewrite find_block_app_l_wf; eauto.
-        eapply wf_ocfg_bid_app_r; eauto.
-      }
-      rewrite denote_ocfg_unfold_in_eq_itree; [| exact H].
-      rewrite denote_ocfg_unfold_in_eq_itree; [| exact EQ].
-      rewrite bind_bind.
-      guclo eqit_clo_bind.
-      econstructor.
-      reflexivity.
-      intros [] ? <-.
-      + (* we jump *)
-        rewrite bind_tau.
-        gstep.
-        constructor.
-        gbase.
-        apply CIH; auto.
-
-      + (* we have returned *)
-        rewrite bind_ret_l.
-        now gstep.
-    - rewrite (denote_ocfg_unfold_not_in_eq_itree bks'); auto.
-      rewrite bind_ret_l.
-      apply Reflexive_eqit_gen_eq.
-Qed.
+Admitted.
 
 (* Transparent denote_block. *)
 (* Print denote_ocfg. *)
@@ -253,46 +204,11 @@ Definition denote_ocfg_equiv_cond (g1 g2 g2': ocfg) (TO :list bid) (σ: bid -> b
  *)
 Lemma denote_phis_cons : forall b φ φs,
                  ⟦φ :: φs⟧Φs b ≈
-                   v <- translate exp_to_instr (⟦φ⟧Φ b);;
+                 (v <- ⟦φ⟧Φ b;
                  ⟦φs⟧Φs b;;
-                 Subevent.trigger (LocalWrite (fst v) (snd v))
+                 Subevent.trigger (LocalWrite (fst v) (snd v)))%monad
 .
 Proof.
-  intros ???; revert φ; induction φs as [| φhd φs IH].
-  - intros [? []].
-    cbn.
-    rewrite ?bind_bind, ?bind_ret_l.
-    break_match_goal.
-    2:admit.
-    apply eutt_eq_bind.
-    intros [].
-    rewrite ?bind_bind, ?bind_ret_l.
-    cbn.
-    rewrite ?bind_bind, ?bind_ret_l.
-    repeat setoid_rewrite bind_ret_l.
-    match goal with
-      |- eutt _ _ ?t => rewrite <- (bind_ret_r t) at 2
-    end.
-    apply eutt_eq_bind.
-    intros []; reflexivity.
-  - intros [? []].
-    simpl.
-    match goal with
-      |- context[raise ?s] => generalize s
-    end.
-    intros s.
-    cbn.
-    match goal with
-      |- context[raise ?s] => generalize s
-    end.
-    intros s'.
-    rewrite ?bind_bind.
-    apply eutt_eq_bind.
-    intros [].
-    rewrite ?bind_bind, ?bind_ret_l.
-    cbn.
-    specialize (IH φhd).
-    cbn in IH.
 Admitted.
 
 (*
@@ -312,8 +228,9 @@ dom
 
  *)
 
-Definition dom_phi (φ: phi dtyp) : list bid := match φ with
-  | Phi _ l => List.map (fun '(id, _) => id) l
+Definition dom_phi (φ: phi dtyp) : gset bid :=
+  match φ with
+  | Phi _ l => dom l
   end.
 
 (* Record σφSafe (σ: bid -> bid) (φ: phi dtyp) : Prop := {
@@ -332,34 +249,52 @@ Definition dom_phi (φ: phi dtyp) : list bid := match φ with
   (id, e) ∈ l -> (id', e') ∈ l -> σ id = σ id' -> e = e'
 end. *)
 
-Record σφSafe (σ: bid -> bid) (φ: phi dtyp) (from: bid) := {
-  EQ: forall id id' e e', match φ with |Phi _ l =>
-      (id, e) ∈ l -> (id', e') ∈ l -> σ id = σ id' -> e = e'
+Record σφSafe (σ : bid -> bid) (φ : phi dtyp) (from : bid) := {
+    EQ: forall id id' e e',
+      match φ with
+      |Phi _ l => l !! id = Some e -> l !! id' = Some e' -> σ id = σ id' -> e = e'
       end;
-  IN: σ from ∈ (dom_phi (phi_rename σ φ)) -> from ∈ (dom_phi φ)
-}.
-  (* σ from ∈ (dom_phi (phi_rename σ φ)) -> from ∈ (dom_phi φ). *)
+    IN: σ from ∈ (dom_phi (phi_rename σ φ)) -> from ∈ (dom_phi φ)
+  }.
+(* σ from ∈ (dom_phi (phi_rename σ φ)) -> from ∈ (dom_phi φ). *)
 
-Lemma dom_phi_cons: forall φ τ id id' e, id ∈ (dom_phi (Phi τ φ)) -> id ∈ (dom_phi (Phi τ ((id', e) :: φ))).
-Proof.
-  intros *. unfold dom_phi. rewrite -> 2 in_map_iff.
-  intros [x [EQ IN]]. exists x.
-  split; trivial. now right.
-Qed.
+(* Lemma dom_phi_cons : *)
+(*   forall φ τ id id' e, *)
+(*     id ∈ (dom_phi (Phi τ φ)) -> *)
+(*     id ∈ (dom_phi (Phi τ ((id', e) ∪ φ))). *)
+(* Proof. *)
+(*   intros *. unfold dom_phi. rewrite -> 2 in_map_iff. *)
+(*   intros [x [EQ IN]]. exists x. *)
+(*   split; trivial. now right. *)
+(* Qed. *)
 
-Lemma dom_phi_cons2: forall φ τ id id' e, id <> id' -> id ∈ (dom_phi (Phi τ ((id', e) :: φ))) -> id ∈ (dom_phi (Phi τ φ)).
-Proof.
-  intros * NEQ. unfold dom_phi. rewrite -> 2 in_map_iff.
-  intros [[id0 e0] [-> IN]]. exists (id, e0).
-  split; trivial. destruct IN as [EQ'|IN].
-  apply pair_equal_spec in EQ' as []. now subst. trivial.
-Qed.
+(* Lemma dom_phi_cons2: forall φ τ id id' e, id <> id' -> id ∈ (dom_phi (Phi τ ((id', e) :: φ))) -> id ∈ (dom_phi (Phi τ φ)). *)
+(* Proof. *)
+(*   intros * NEQ. unfold dom_phi. rewrite -> 2 in_map_iff. *)
+(*   intros [[id0 e0] [-> IN]]. exists (id, e0). *)
+(*   split; trivial. destruct IN as [EQ'|IN]. *)
+(*   apply pair_equal_spec in EQ' as []. now subst. trivial. *)
+(* Qed. *)
 
-Lemma σφSafe_cons: forall σ (τ:dtyp) φ (id:bid) e b, b <> id -> σφSafe σ (Phi τ ((id, e) :: φ)) b -> σφSafe σ (Phi τ φ) b.
+Lemma σφSafe_cons:
+  forall σ (τ:dtyp) φ (id:bid) e b,
+    b <> id ->
+    φ !! id = None ->
+    σφSafe σ (Phi τ ({[id := e]} ∪ φ)) b ->
+    σφSafe σ (Phi τ φ) b.
 Proof.
-  intros * NEQ [SAFE1 SAFE2]. split.
-  - intros * IN IN' EQ. eapply SAFE1. 3: apply EQ. all: now right.
-  - intro H. eapply dom_phi_cons2; cycle 1.
+  intros * NEQ LUN [SAFE1 SAFE2]. split.
+  - intros * IN IN' EQ. eapply SAFE1. 3: apply EQ.
+    all: by simplify_map_eq.
+  - intros IN.
+    forward SAFE2.
+    + unfold dom_phi in IN |- *.
+      cbn in *.
+
+    (* unfold dom_phi in *. *)
+    (* do 2 case_match. *)
+    (* intros ?. *)
+
     apply SAFE2. now apply dom_phi_cons. trivial.
 Qed.
 
@@ -442,7 +377,7 @@ Proof.
     cbn [List.map].
     rewrite denote_phis_cons.
     apply eutt_clo_bind with (UU := Logic.eq).
-    rewrite denote_phi_rename; [reflexivity |]. 
+    rewrite denote_phi_rename; [reflexivity |].
     now inversion HSafe.
     intros ?? <-.
     reflexivity.
@@ -495,7 +430,7 @@ Theorem denote_ocfg_equiv (g1 g2 g2' : ocfg) (σ : bk_renaming) :
   ~ to ∈ nTO -> ~ from ∈ nTO -> σbksSafe σ g1 from ->
   ⟦g1 ++ g2⟧bs (from,to) ≈ ⟦ocfg_rename σ g1 ++ g2'⟧bs (from', to).
 Proof.
-  einit. 
+  einit.
   ecofix cih.
   clear cihH.
   intros * EQ WF WFσ DOMσ * hIN * EQσ tNIN fNIN SAFE.
