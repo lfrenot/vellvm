@@ -1,23 +1,17 @@
 (** This file contains the tools to prove the correctness of the block fusion optimization.
     It relies on the garantees given by the [BlockFusion] pattern. *)
 
-From Vellvm Require Import Syntax ScopeTheory Semantics Theory Tactics.
+From Vellvm Require Import Syntax ScopeTheory Semantics Theory Tactics Denotation.
 From ITree Require Import ITree Eq HeterogeneousRelations.
-From Pattern Require Import IdModule MapCFG Patterns BlockFusion.
-Require Import FSets.FMapAVL FSets.FMapFacts.
+From Pattern Require Import Base Patterns BlockFusion.
+(* Require Import FSets.FMapAVL FSets.FMapFacts. *)
 Require Import List.
-Import TopLevelBigIntptr InterpretationStack.
-Import ListNotations.
+(* Import TopLevelBigIntptr InterpretationStack. *)
+(* Import ListNotations.
 Import Map MapF MapF.P MapF.P.F.
-Import IdOT MapCFG Head Focus Block Patterns.
+Import IdOT MapCFG Head Focus Block Patterns. *)
+Import Head Focus Block Patterns gmap.
 (* Set Implicit Arguments. *)
-(* Denotation definitions *)
-
-Definition ocfg_to_map_cfg (g: ocfg) := List.fold_right (fun b => add_id b) empty g.
-
-Definition map_cfg_to_ocfg (g : map_cfg): ocfg := List.map snd (elements g).
-
-Definition denotation_map_cfg (g : map_cfg) fto :ITreeDefinition.itree instr_E (bid * bid + uvalue) := (denote_ocfg (map_cfg_to_ocfg g)) fto.
 
 (* Block Fusion *)
 
@@ -32,21 +26,19 @@ Definition fusion_comments (A B: blk) :=
   end.
 
 Definition fusion (A B: blk): blk := {|
-  blk_id         := A.(blk_id);
   blk_phis       := A.(blk_phis);
   blk_code       := fusion_code A B;
   blk_term       := B.(blk_term);
   blk_comments   := fusion_comments A B
 |}.
 
-Import SemNotations.
-Import SetNotations.
+(* Import SemNotations. *)
 (* todo better representation*)
 Definition bk_renaming := bid -> bid.
 
 Definition phi_rename (σ : bk_renaming) (ϕ:  phi dtyp): phi dtyp :=
   match ϕ with
-    | Phi τ exps => Phi τ (List.map (fun '(id,e) => (σ id, e)) exps)
+    | Phi τ exps => Phi τ (fmap (fun '(id,e) => (σ id, e)) exps)
   end.
 
 Definition bk_phi_rename (σ : bk_renaming) (b: blk): blk := {|
