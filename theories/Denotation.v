@@ -1,7 +1,7 @@
 (** This file contains the tools to prove the correctness of the block fusion optimization.
     It relies on the garantees given by the [BlockFusion] pattern. *)
 
-From Vellvm Require Import Syntax ScopeTheory Semantics Theory Tactics Denotation.
+From Vellvm Require Import Syntax ScopeTheory Semantics Theory Tactics Denotation DenotationTheory.
 From ITree Require Import ITree Eq HeterogeneousRelations.
 From Pattern Require Import Base Patterns BlockFusion.
 (* Require Import FSets.FMapAVL FSets.FMapFacts. *)
@@ -10,9 +10,9 @@ Require Import List.
 (* Import ListNotations.
 Import Map MapF MapF.P MapF.P.F.
 Import IdOT MapCFG Head Focus Block Patterns. *)
+From stdpp Require Import prelude.
 Import Head Focus Block Patterns gmap.
 (* Set Implicit Arguments. *)
-
 (* Block Fusion *)
 
 Definition fusion_code (A B: blk): code dtyp := A.(blk_code) ++ B.(blk_code).
@@ -37,9 +37,11 @@ Definition fusion (A B: blk): blk := {|
 Definition bk_renaming := bid -> bid.
 From stdpp Require Import prelude fin_maps.
 
+Definition exps_rename σ (id: bid) e (φ: gmap bid (exp dtyp)) := {[σ id := e]} ∪ φ.
+
 Definition phi_rename (σ : bk_renaming) (ϕ:  phi dtyp): phi dtyp :=
   match ϕ with
-    | Phi τ exps => Phi τ (kmap σ exps)
+    | Phi τ exps => Phi τ (map_fold (exps_rename σ) ∅ exps)
   end.
 
 Definition bk_phi_rename (σ : bk_renaming) (b: blk): blk := {|
@@ -258,29 +260,46 @@ Record σφSafe (σ : bid -> bid) (φ : phi dtyp) (from : bid) := {
   }.
 (* σ from ∈ (dom_phi (phi_rename σ φ)) -> from ∈ (dom_phi φ). *)
 
-(* Lemma dom_phi_cons : *)
-(*   forall φ τ id id' e, *)
-(*     id ∈ (dom_phi (Phi τ φ)) -> *)
-(*     id ∈ (dom_phi (Phi τ ((id', e) ∪ φ))). *)
-(* Proof. *)
-(*   intros *. unfold dom_phi. rewrite -> 2 in_map_iff. *)
-(*   intros [x [EQ IN]]. exists x. *)
-(*   split; trivial. now right. *)
-(* Qed. *)
+Lemma dom_phi_cons :
+  forall φ τ id id' e,
+    id ∈ (dom_phi (Phi τ φ)) ->
+    id ∈ (dom_phi (Phi τ ({[id' := e]} ∪ φ))).
+Proof.
+  intros *. unfold dom_phi. set_solver.
+Qed.
 
-(* Lemma dom_phi_cons2: forall φ τ id id' e, id <> id' -> id ∈ (dom_phi (Phi τ ((id', e) :: φ))) -> id ∈ (dom_phi (Phi τ φ)). *)
-(* Proof. *)
-(*   intros * NEQ. unfold dom_phi. rewrite -> 2 in_map_iff. *)
-(*   intros [[id0 e0] [-> IN]]. exists (id, e0). *)
-(*   split; trivial. destruct IN as [EQ'|IN]. *)
-(*   apply pair_equal_spec in EQ' as []. now subst. trivial. *)
-(* Qed. *)
+Lemma dom_phi_cons2: forall φ τ id id' e, id <> id' -> id ∈ (dom_phi (Phi τ ({[id' := e]} ∪ φ))) -> id ∈ (dom_phi (Phi τ φ)).
+Proof.
+  intros * NEQ. unfold dom_phi. set_solver.
+Qed.
+
+Definition phi_rename_union_P φ := forall σ b τ id a, b ∈ dom_phi (phi_rename σ (Phi τ φ)) -> b ∈ dom_phi (phi_rename σ (Phi τ (<[id:=a]>φ))).
+
+Lemma phi_rename_union: forall φ,
+  phi_rename_union_P φ.
+Proof.
+  intros ?. apply map_ind; unfold phi_rename_union_P. intros *. cbn. rewrite map_fold_empty. set_solver.
+  intros * NIN IH * IN. cbn in *. rewrite map_fold_insert; auto.
+Admitted.
+
+(* Lemma phi_rename_union (σ: bk_renaming) (e1 e2: gmap bid (exp dtyp)): kmap σ (e1 ∪ e2) = (kmap σ e1 ∪ kmap σ e2).
+Proof.
+  intros. *)
+
+(*
+
+Lemma kmap_dom: ∀ {K : Type} {M : Type → Type} {D : Type} {H : ∀ A : Type, Dom (M A) D} {H0 : FMap M} {H1 : ∀ A : Type, Lookup K A (M A)} {H2 : ∀ A : Type, Empty (M A)} {H3 : ∀ A : Type, PartialAlter K A (M A)} {H4 : OMap M} {H5 : Merge M} {H6 : ∀ A : Type, MapFold K A (M A)} {EqDecision0 : EqDecision K} {H7 : ElemOf K D} {H8 : Empty D} {H9 : Singleton K D} {H10 : Union D} {H11 : Intersection D} {H12 : Difference D}, FinMapDom K M D → ∀ {Elements0 : Elements K D}, FinSet K D → ∀ {K2 : Type} {M2 : Type → Type} {D2 : Type} {H14 : ∀ A : Type, Dom (M2 A) D2} {H15 : FMap M2} {H16 : ∀ A : Type, Lookup K2 A (M2 A)} {H17 : ∀ A : Type, Empty (M2 A)} {H18 : ∀ A : Type, PartialAlter K2 A (M2 A)} {H19 : OMap M2} {H20 : Merge M2} {H21 : ∀ A : Type, MapFold K2 A (M2 A)} {EqDecision1 : EqDecision K2} {H22 : ElemOf K2 D2} {H23 : Empty D2} {H24 : Singleton K2 D2} {H25 : Union D2} {H26 : Intersection D2} {H27 : Difference D2}, FinMapDom K2 M2 D2 → ∀ {A : Type} (f : K → K2), ∀ m : M A, dom (kmap f m) ≡ set_map f (dom m).
+*) 
+
+(* Lemma p_eq : PreOrder eq. *)
+
+Lemma eq_dec_bid: forall (id id': bid), {id=id'} + {id<>id'}. Admitted.
 
 Lemma σφSafe_cons:
   forall σ (τ:dtyp) φ (id:bid) e b,
     b <> id ->
     φ !! id = None ->
-    σφSafe σ (Phi τ ({[id := e]} ∪ φ)) b ->
+    σφSafe σ (Phi τ (<[id := e]> φ)) b ->
     σφSafe σ (Phi τ φ) b.
 Proof.
   intros * NEQ LUN [SAFE1 SAFE2]. split.
@@ -288,16 +307,28 @@ Proof.
     all: by simplify_map_eq.
   - intros IN.
     forward SAFE2.
-    + unfold dom_phi in IN |- *.
-      cbn in *.
-
+    + unfold dom_phi, phi_rename in IN |- *. rewrite map_fold_insert.
+      -- set_solver.
+      -- constructor; auto. intros ? * ? ?. now subst.
+      -- intros * ? * ?. now subst.
+      -- unfold exps_rename. intros j1 j2 * NEQj M1 M2.
+         pose proof eq_dec_bid (σ j1) (σ j2) as [EQ|nEQ].
+         (* destruct DEC. *)
+         ** pose proof SAFE1 _ _ _ _ M1 M2 EQ as EQz. now rewrite EQ, EQz.
+         ** rewrite <- !insert_union_singleton_l. now apply insert_commute.
+      -- trivial.
+      (* rewrite elem_of_dom in IN |- *. destruct IN as [x IN].
+      exists x. Search map_fold (_!!_).
+      cbn in *. 
+      unfold kmap. unfold map_to_list. admit. *)
+    + unfold dom_phi in *. cbn in *. set_solver.
     (* unfold dom_phi in *. *)
     (* do 2 case_match. *)
     (* intros ?. *)
-
-    apply SAFE2. now apply dom_phi_cons. trivial.
+    (* apply SAFE2. now apply dom_phi_cons. trivial. *)
 Qed.
 
+(*
 Lemma assoc_in: forall (b:bid) (e: exp dtyp) (φ : list (bid * exp dtyp)), Util.assoc b φ = Some e -> (b, e) ∈ φ.
 Proof.
   intros *. induction φ as [|(b', e') φ IH]; intro H.
@@ -316,42 +347,97 @@ Proof.
   now apply IH.
 Qed.
 
-Lemma denote_phi_rename σ φ b
-  (SAFE : σφSafe σ φ b):
-  forall x, ⟦ (x, φ) ⟧Φ b ≈ ⟦ (x, phi_rename σ φ) ⟧Φ (σ b).
+*)
+
+
+
+(* Lemma σφSafe_rename: forall σ τ i x m b, σφSafe σ (Phi τ (<[i:=x]> m)) b -> m !! i = None ->
+  <[i:=x]> m !! b = map_fold (exps_rename σ) ∅ (<[i:=x]> m) !! σ b.
 Proof.
-  intros *. destruct φ as [τ φ].
-  induction φ as [| [id e] φ IH].
+  intros * [SAFE1 SAFE2] NIN. cbn in *. unfold exps_rename in *.
+  rewrite map_fold_insert.
+  - pose proof eq_dec_bid b i as [EQ|NEQ]. 2: pose proof eq_dec_bid (σ b) (σ i) as [EQσ|NEQσ].
+    * subst. rewrite lookup_union. rewrite lookup_singleton. rewrite union_Some_l. apply lookup_insert.
+    * forward SAFE2. {
+        rewrite EQσ. rewrite map_fold_insert. set_solver.
+        - constructor; auto. intros ? * ? ?. now subst.
+        - intros * ? * ?. now subst.
+        - intros * NEQ' M1 M2. pose proof eq_dec_bid (σ j1) (σ j2) as [EQj|NEQj].
+          * pose proof SAFE1 _ _ _ _ M1 M2 EQj as EQz. now rewrite EQj, EQz.
+          * rewrite <- !insert_union_singleton_l. now apply insert_commute.
+        - trivial.
+      } 
+      rewrite lookup_union. rewrite EQσ. rewrite lookup_singleton. rewrite union_Some_l.
+      apply elem_of_dom in SAFE2 as [y SAFE2]. rewrite SAFE2.
+      assert (x=y). eapply SAFE1. apply lookup_insert. apply SAFE2. auto. now subst.
+    *  
+      
+  - constructor; auto. intros ? * ? ?. now subst.
+  - intros * ? * ?. now subst.
+  - intros * NEQ M1 M2. pose proof eq_dec_bid (σ j1) (σ j2) as [EQj|NEQj].
+      * pose proof SAFE1 _ _ _ _ M1 M2 EQj as EQz. now rewrite EQj, EQz.
+      * rewrite <- !insert_union_singleton_l. now apply insert_commute.
+  - trivial.
+  
+  pose proof eq_dec_bid b i as [EQ|NEQ].
+  - subst. rewrite map_fold_insert.
+    * unfold exps_rename. rewrite lookup_union. rewrite lookup_singleton. rewrite union_Some_l. apply lookup_insert.
+    * constructor; auto. intros ? * ? ?. now subst.
+    * intros * ? * ?. now subst.
+    * admit.
+    * trivial.
+  - rewrite map_fold_insert.
+    *  *)
+
+Definition phi_rename_correct_P φ := forall τ σ b, σφSafe σ (Phi τ φ) b -> φ !! b = (map_fold (exps_rename σ) ∅ φ) !! σ b.
+
+Lemma phi_rename_correct: forall φ, phi_rename_correct_P φ.
+Proof.
+  intros. apply map_ind; unfold phi_rename_correct_P.
+  - reflexivity.
+  - intros * NIN REC * [SAFE1 SAFE2]. cbn in *. unfold exps_rename in *.
+    rewrite map_fold_insert.
+    * pose proof eq_dec_bid b i as [EQ|NEQ]. 2: pose proof eq_dec_bid (σ b) (σ i) as [EQσ|NEQσ].
+      + subst. rewrite lookup_union. rewrite lookup_singleton. rewrite union_Some_l. apply lookup_insert.
+      + forward SAFE2. {
+          rewrite EQσ. rewrite map_fold_insert. set_solver.
+          - constructor; auto. intros ? * ? ?. now subst.
+          - intros * ? * ?. now subst.
+          - intros * NEQ' M1 M2. pose proof eq_dec_bid (σ j1) (σ j2) as [EQj|NEQj].
+            * pose proof SAFE1 _ _ _ _ M1 M2 EQj as EQz. now rewrite EQj, EQz.
+            * rewrite <- !insert_union_singleton_l. now apply insert_commute.
+          - trivial.
+        } 
+        rewrite lookup_union. rewrite EQσ. rewrite lookup_singleton. rewrite union_Some_l.
+        apply elem_of_dom in SAFE2 as [y SAFE2]. rewrite SAFE2.
+        assert (x=y). eapply SAFE1. apply lookup_insert. apply SAFE2. auto. now subst.
+      + rewrite lookup_union. rewrite <- REC with (τ:=τ).
+        now simplify_map_eq. eapply σφSafe_cons. apply NEQ. trivial. split. apply SAFE1. apply SAFE2.
+    * constructor; auto. intros ? * ? ?. now subst.
+    * intros * ? * ?. now subst.
+    * intros * NEQ M1 M2. pose proof eq_dec_bid (σ j1) (σ j2) as [EQj|NEQj].
+        + pose proof SAFE1 _ _ _ _ M1 M2 EQj as EQz. now rewrite EQj, EQz.
+        + rewrite <- !insert_union_singleton_l. now apply insert_commute.
+    * trivial.
+Qed.
+
+Definition denote_phi_rename_P φ := forall τ σ b, σφSafe σ (Phi τ φ) b -> ∀ x, ⟦ (x, (Phi τ φ)) ⟧Φ b ≈ ⟦ (x, phi_rename σ (Phi τ φ)) ⟧Φ (σ b).
+
+Lemma denote_phi_rename_aux: forall φ, denote_phi_rename_P φ.
+Proof.
+  intros. apply map_ind; unfold denote_phi_rename_P.
   - reflexivity.
   - cbn.
     match goal with
       |- context[raise ?s] => generalize s
     end.
-    intros s.
-    destruct (RelDec.rel_dec b id) eqn:EQ.
-    2: destruct (RelDec.rel_dec (σ b) (σ id)) eqn: EQ'.
-    * rewrite RelDec.rel_dec_correct in EQ; subst.
-      rewrite Util.eq_dec_eq.
-      reflexivity.
-    * destruct SAFE as [SAFE1 SAFE2]. break_match_goal. (*2: destruct WF as [IN|NIN].*)
-      + apply assoc_in in Heqo. replace e with e0. reflexivity.
-        eapply SAFE1.
-        right. apply Heqo.
-        now left.
-        now rewrite RelDec.rel_dec_correct in EQ'.
-      + pose proof assoc_nin _ _ Heqo.
-        rewrite <- RelDec.neg_rel_dec_correct in EQ.
-        rewrite RelDec.rel_dec_correct in EQ'.
-        assert (exists e', (b, e') ∈ φ) as (e' & H'). {
-          apply in_map_iff in SAFE2 as [[b' e'] [-> IN]].
-          destruct IN as [EQb|IN].
-          - apply pair_equal_spec in EQb as []. now subst.
-          - now exists e'.
-          - now left.
-        }
-        now apply H in H'.
-    * rewrite <- RelDec.neg_rel_dec_correct in EQ. apply IH.
-      eapply σφSafe_cons. apply EQ. apply SAFE.
+    intros * NIN REC * SAFE *.
+    pose proof phi_rename_correct _ _ _ _ SAFE as EQ. now rewrite EQ.
+Qed.
+
+Lemma denote_phi_rename: forall φ σ b, σφSafe σ φ b -> ∀ x, ⟦ (x, φ) ⟧Φ b ≈ ⟦ (x, phi_rename σ φ) ⟧Φ (σ b).
+Proof.
+  intros [x φ]. apply denote_phi_rename_aux.
 Qed.
 
 Definition σφsSafe σ (φs : list (local_id * phi dtyp)) from : Prop :=
@@ -368,10 +454,8 @@ Lemma denote_phis_rename
     (List.map (fun '(x, φ) => (x, phi_rename σ φ)) φs).
 Proof.
   induction φs as [| φ φs IH].
-  - cbn [List.map].
-    rewrite 2 denote_no_phis.
-    reflexivity.
-  - destruct φ.
+  - reflexivity.
+  - destruct φ as [x φ].
     rewrite denote_phis_cons.
     setoid_rewrite IH.
     cbn [List.map].
@@ -389,17 +473,16 @@ Lemma bk_phi_rename_eutt :
       (* dom_renaming σ (outs g2) (outs g2') -> *)
       ⟦ bk ⟧b from ≈ ⟦ bk_phi_rename σ bk ⟧b (σ from).
 Proof.
-  intros [] SAFE ? ?.
+  intros [] * SAFE.
   unfold bk_phi_rename.
   simpl.
-  rewrite ?denote_block_unfold.
   eapply eutt_clo_bind.
-  rewrite denote_phis_rename.
-  reflexivity. apply H.
+  rewrite denote_phis_rename;cycle 1. apply SAFE.
+  reflexivity.
   intros ? ? <-. reflexivity.
 Qed.
 
-Lemma find_block_some_ocfg_rename: forall g id b σ,
+(* Lemma find_block_some_ocfg_rename: forall g id b σ,
   find_block g id = Some b ->
   find_block (ocfg_rename σ g) id = Some (bk_phi_rename σ b).
 Proof.
@@ -411,10 +494,10 @@ Proof.
   break_match_hyp.
   - cbn. rewrite Heqb0. now inversion FIND.
   - cbn. rewrite Heqb0. apply IH. apply FIND.
-Qed.
+Qed. *)
 
 Definition σbksSafe σ (g: ocfg) from : Prop :=
-  List.Forall (fun x => σφsSafe σ (x.(blk_phis)) from) g.
+  Forall (fun x => σφsSafe σ (x.(blk_phis)) from) g.
 
 Theorem denote_ocfg_equiv (g1 g2 g2' : ocfg) (σ : bk_renaming) :
   let TO  := (outputs g1) ∩ (inputs g2) in
@@ -602,3 +685,4 @@ Proof.
     admit.
   - admit.
 Admitted.
+*)
