@@ -1,0 +1,385 @@
+(** This file contains the tools to prove the correctness of the block fusion optimization.
+    It relies on the garantees given by the [BlockFusion] pattern. *)
+
+From Vellvm Require Import Syntax ScopeTheory Semantics Theory Tactics Denotation DenotationTheory.
+From ITree Require Import ITree Eq HeterogeneousRelations.
+From Pattern Require Import Base Patterns BlockFusion.
+From Paco Require Import paco.
+(* Require Import FSets.FMapAVL FSets.FMapFacts. *)
+Require Import List.
+(* Import TopLevelBigIntptr InterpretationStack. *)
+(* Import ListNotations.
+Import Map MapF MapF.P MapF.P.F.
+Import IdOT MapCFG Head Focus Block Patterns. *)
+From stdpp Require Import prelude fin_maps.
+Import Head Focus Block Patterns gmap.
+(* Set Implicit Arguments. *)
+(* Block Fusion *)
+
+Definition fusion_code (A B: blk): code dtyp := A.(blk_code) ++ B.(blk_code).
+
+Definition fusion_comments (A B: blk) :=
+  match (A.(blk_comments), B.(blk_comments)) with
+    | (Some cA, Some cB) => Some (cA++cB)
+    | (Some cA, _) => Some cA
+    | (_, Some cB) => Some cB
+    | (_, _) => None
+  end.
+
+Definition fusion (A B: blk): blk := {|
+  blk_phis       := B.(blk_phis);
+  blk_code       := fusion_code A B;
+  blk_term       := B.(blk_term);
+  blk_comments   := fusion_comments A B
+|}.
+
+(* Import SemNotations. *)
+(* todo better representation*)
+Definition bk_renaming := bid -> bid.
+
+(* Definition exps_rename σ (id: bid) e (φ: gmap bid (exp dtyp)) := {[σ id := e]} ∪ φ.
+
+Definition phi_rename (σ : bk_renaming) (ϕ:  phi dtyp): phi dtyp :=
+  match ϕ with
+    | Phi τ exps => Phi τ (map_fold (exps_rename σ) ∅ exps)
+  end. *)
+
+Definition term_rename (σ: bk_renaming) (t: terminator dtyp): terminator dtyp := match t with
+  | TERM_Br v br1 br2 => TERM_Br v (σ br1) (σ br2)
+  | TERM_Br_1 br => TERM_Br_1 (σ br)
+  | TERM_Switch v default_dest brs => TERM_Switch v (σ default_dest) (map (fun '(x, id) => (x, σ id)) brs)
+  | TERM_IndirectBr v brs => TERM_IndirectBr v (map σ brs)
+  | TERM_Invoke fnptrval args to_label unwind_label => TERM_Invoke fnptrval args (σ to_label) (σ unwind_label)
+  | _ => t
+end.
+
+Definition bk_term_rename (σ : bk_renaming) (b: blk): blk := {|
+  blk_phis       := b.(blk_phis);
+  blk_code       := b.(blk_code);
+  blk_term       := term_rename σ b.(blk_term);
+  blk_comments   := b.(blk_comments)
+|}.
+
+Definition ocfg_rename (σ : bk_renaming) (g: ocfg): ocfg := (bk_term_rename σ) <$> g.
+
+Record dom_renaming (σ : bk_renaming) (from to : gset bid) : Prop :=
+  {
+    in_dom : forall id, id ∈ from -> (σ id) ∈ to;
+    out_dom : forall id, id ∉ from -> (σ id) = id
+  }.
+
+Module Type Theory (LP : LLVMParams.LLVMParams).
+  Module DT := DenotationTheory.Make LP.
+  Import DT.
+  Import DT.D.
+  Import LP.
+
+  Variant hidden_cfg  (T: Type) : Type := boxh_cfg (t: T).
+  Variant visible_cfg (T: Type) : Type := boxv_cfg (t: T).
+  Ltac hide_cfg :=
+    match goal with
+    | h : visible_cfg _ |- _ =>
+        let EQ := fresh "VG" in
+        destruct h as [EQ];
+        apply boxh_cfg in EQ
+    | |- context[denote_ocfg ?cfg _] =>
+        remember cfg as G eqn:VG;
+        apply boxh_cfg in VG
+    end.
+  Ltac show_cfg :=
+    match goal with
+    | h: hidden_cfg _ |- _ =>
+        let EQ := fresh "HG" in
+        destruct h as [EQ];
+        apply boxv_cfg in EQ
+    end.
+  Notation "'hidden' G" := (hidden_cfg (G = _)) (only printing, at level 10).
+
+Import ITree.
+
+
+Module eutt_Notations.
+  Notation "t '======================' '======================' u '======================' '{' R '}'"
+    := (eutt R t u)
+         (only printing, at level 200,
+          format "'//' '//' t '//' '======================' '======================' '//' u '//' '======================' '//' '{' R '}'"
+         ).
+End eutt_Notations.
+Import eutt_Notations.
+
+(* About denote_ocfg_prefix. *)
+
+(*
+paco
+----
+
+gpaco
+-----
+ginit: initialization
+gcofix cih: starting a proof by coinduction
+guclo L : use a up-to bind proved valid before in lemma L
+gstep : we take a step of the endofunction generating the relation
+gbase : conclude by coinduction (w.r.t. what is unlocked)
+
+euttG: only for proving [eutt R] goals
+-----
+einit: initialization
+ecofix cih: starting a proof by coinduction
+ebind : use up-to bind
+
+ *)
+
+Import SemNotations.
+Import MonadNotation.
+Import Events.DV.
+
+Lemma denote_ocfg_prefix_eq_itree:
+  forall (prefix bks' postfix : ocfg) [bks : ocfg] (from to : bid),
+    bks = prefix ∪ bks' ∪ postfix ->
+    ⟦ bks ⟧bs (from, to) ≅
+    x_ <- ⟦ bks' ⟧bs (from, to);
+    match x_ with
+      | inl x => ⟦ bks ⟧bs x
+      | inr x => Ret (inr x)
+  end.
+Proof.
+Admitted.
+
+Definition denote_ocfg_equiv_cond (g1 g2 g2': ocfg) (nTO :gset bid) (σ: bid -> bid) :=
+  forall origin header,
+    header ∉ nTO ->
+    eutt (Logic.eq)
+      (⟦g2 ⟧bs (origin, header))
+      (⟦g2'⟧bs (origin, σ header)).
+
+
+Lemma find_block_some_ocfg_rename: forall g σ id b, g !! id = Some b -> (ocfg_rename σ g) !! id = Some (bk_term_rename σ b).
+Proof.
+  intros g. apply map_ind with (m:=g). now cbn.
+  intros * NIN REC * IN.
+  unfold ocfg_rename. rewrite fmap_insert.
+  case (decide (id=i));intros ; now simplify_map_eq.
+Qed.
+
+(*
+
+block fusion: je rentrais par a, je rentre maintenant par b
+
+b = σ a
+
+σ : renaming map
+
+ *)
+
+Theorem denote_ocfg_equiv (g1 g2 g2' : ocfg) (σ : bk_renaming) :
+  let nTO := inputs g2 ∖ outputs g1 in
+  let nFROM := inputs g2 ∩ outputs g1 in
+  g1 ##ₘ g2 -> ocfg_rename σ g1 ##ₘ g2' ->
+  dom_renaming σ nTO (inputs g2') ->
+  denote_ocfg_equiv_cond g1 g2 g2' nTO σ ->
+  forall from to' to,
+  to' = σ to ->
+  to ∉ nTO -> from ∉ nFROM ->
+  ⟦g1 ∪ g2⟧bs (from,to) ≈ ⟦ocfg_rename σ g1 ∪ g2'⟧bs (from, to').
+Proof.
+  intros nTO nFROM.
+  einit.
+  ecofix cih.
+  clear cihH.
+  intros DIS DISσ [in_dom out_dom] CND * EQσ NINt NINf.
+  (* pose proof cihL EQ CND. *)
+  (* Either we are in the 'visible' graph or not. *)
+  case (decide (to ∈ (inputs g1 ∪ inputs g2))) as [tIN'|tNIN']. apply elem_of_union in tIN' as [tIN|tIN].
+  - (* if we enter g1: then process [g1], and get back to the whole thing *)
+    assert (σTO: σ to=to) by now apply out_dom.
+    pose proof find_block_in_inputs _ tIN as [bk tFIND].
+    assert (FIND: (g1 ∪ g2) !! to = Some bk) by now simplify_map_eq.
+    rewrite denote_ocfg_in_eq_itree; [| exact FIND].
+    pose proof find_block_some_ocfg_rename _ σ _ _ tFIND as FINDσ.
+    assert (FIND': (ocfg_rename σ g1 ∪ g2') !! to' = Some (bk_term_rename σ bk)). rewrite EQσ, σTO; now simplify_map_eq.
+    rewrite denote_ocfg_in_eq_itree; [| exact FIND'].
+
+  (* Then we start with a first block and then remaining of processing g1 *)
+    (* subst. *)
+    ebind.
+    econstructor.
+    subst.
+    apply bk_phi_rename_eutt.
+    now pose proof map_Forall_lookup_1 _ _ _ _ SAFE tFIND.
+    (* admit. *)
+    intros [] ? <-.
+    (* + rewrite ? bind_tau. *)
+    + assert (to = σ to). {
+        destruct DOMσ as [in_dom out_dom].
+        symmetry. now apply out_dom.
+      }
+      etau.
+      ebase.
+      right.
+      apply cihL; auto.
+      (* Generalize goal with an equality to avoid issue with unification (DONE)*)
+      (* b is an output of g1 (how to get?) *) admit.
+      (* review safety? *) admit.
+    + eret.
+    * subst TO. assert (to ∈ outputs g1 /\ to ∈ inputs g2) as [tINo tINi] by (now apply elem_of_intersection).
+    (* generalize tIN; intros tmp; apply cap_correct in tmp as [tINo tINi]. *)
+      rewrite (@denote_ocfg_prefix_eq_itree g1 g2 ∅ (g1 ∪ g2) from to); cycle 1.
+      symmetry. apply map_union_empty.
+      (* set_solver. *)
+      rewrite (@denote_ocfg_prefix_eq_itree (ocfg_rename σ g1) g2' ∅ (ocfg_rename σ g1 ∪ g2') from' to); cycle 1.
+      symmetry. apply map_union_empty.
+      (* set_solver. *)
+      ebind; econstructor.
+      clear - CND; clear cihL.
+      unfold denote_ocfg_equiv_cond in CND.
+      rewrite EQσ; apply CND; auto.
+      intros [[] |] [[] |] INV; try now inv INV.
+      inv INV.
+      destruct H1 as (INV & <- & ->). {
+        (* Extract a lemma? *)
+        (* if we enter g1: then process [g1], and get back to the whole thing *)
+        (* assert (exists bk, find_block (g1 ++ g2) b2 = Some bk) as (bk & FIND) by admit. *)
+        (* pose proof find_block_in_inputs _ INV as [bk tFIND].
+        pose proof find_block_some_app g1 g2 _ tFIND as FIND.
+        rewrite denote_ocfg_unfold_in_eq_itree; [| exact FIND].
+        pose proof find_block_some_ocfg_rename _ _ _ σ tFIND as FINDσ.
+        pose proof find_block_some_app _ g2' _ FINDσ as FIND'.
+        rewrite denote_ocfg_unfold_in_eq_itree; [| exact FIND']. *)
+        pose proof find_block_in_inputs _ INV as [bk tFIND]. 
+        assert (FIND: (g1 ∪ g2) !! b2 = Some bk) by now simplify_map_eq.
+        rewrite denote_ocfg_in_eq_itree; [| exact FIND].
+        pose proof find_block_some_ocfg_rename _ _ _ σ tFIND as FINDσ.
+        assert (FIND': (ocfg_rename σ g1 ∪ g2') !! b2 = Some (bk_phi_rename σ bk)) by now simplify_map_eq.
+        rewrite denote_ocfg_in_eq_itree; [| exact FIND'].
+
+        (* Then we start with a first block and then remaining of processing g1 *)
+        (* subst. *)
+        ebind.
+        econstructor.
+        subst.
+        apply bk_phi_rename_eutt.
+        admit.
+        intros [] ? <-.
+        (* + rewrite ? bind_tau. *)
+        - assert (b2 ∉ inputs g2 ∖ outputs g1). {
+            intros ?.
+            assert (H2i: b2 ∈ inputs g2) by set_solver.
+            contradict DIS. eapply map_not_disjoint.
+            unfold inputs in H2i, INV.
+            apply elem_of_dom in H2i as [x2 H2i], INV as [x1 INV].
+            now exists b2, x1, x2.
+          }
+          assert (b2 = σ b2). {
+              destruct DOMσ as [in_dom out_dom].
+              symmetry. now apply out_dom.
+            }
+          etau.
+          ebase.
+          right.
+          apply cihL; auto.
+          (* Generalize goal with an equality to avoid issue with unification (DONE)*)
+          * (* b0 output of g1 *) admit.
+          (* * intros H'.
+            assert (H2i: b2 ∈ inputs g2) by set_solver.
+            contradict DIS. eapply map_not_disjoint.
+            unfold inputs in H2i, INV.
+            apply elem_of_dom in H2i as [x2 H2i], INV as [x1 INV].
+            now exists b2, x1, x2. *)
+          * admit.
+        - eret.
+      }
+  - rewrite denote_ocfg_nin_eq_itree.
+    rewrite denote_ocfg_nin_eq_itree.
+    assert (from = σ from). {
+      destruct DOMσ as [in_dom out_dom]. symmetry. now apply out_dom.
+    }
+    subst. rewrite <- H. reflexivity.
+    admit. admit.
+
+    (* pose proof find_block_in_inputs _ _ tIN as [bk FIND]. *)
+    (* assert (exists bk', find_block (ocfg_rename σ g1) to = Some bk' /\ *)
+    (*                bk' = bk_phi_rename σ bk) as (bk' & FIND' & EQ') by admit. *)
+    (* rewrite denote_ocfg_unfold_in_eq_itree; [| exact FIND]. *)
+    (* rewrite denote_ocfg_unfold_in_eq_itree; [| exact FIND']. *)
+    (* rewrite !bind_bind. *)
+    (* subst. *)
+
+    (* rewrite (@denote_ocfg_prefix_eq_itree nil g1 g2 (g1 ++ g2) from to). *)
+    (* 2,3: admit. *)
+    (* rewrite (@denote_ocfg_prefix_eq_itree nil (ocfg_rename σ g1) g2' (ocfg_rename σ g1 ++ g2') (σ from) to). *)
+    (* 2, 3: admit. *)
+
+
+  (*   refine (sum_rel (fun x y => y = σ x) Logic.eq). *)
+
+
+  (* - rewrite (@denote_ocfg_prefix_strong g1 g2 nil (g1 ++ g2) from to). *)
+  (*   2,3: admit. *)
+  (*   rewrite (@denote_ocfg_prefix_strong (ocfg_rename σ g1) g2' nil (ocfg_rename σ g1 ++ g2') from to). *)
+  (*   2, 3: admit. *)
+  (*   (* unfold denote_ocfg_equiv_cond in hIN. *) *)
+  (*   destruct (hIN from to tIN) as [[x [RET RET']]|[from' [to' [t'IN [RET RET']]]]]; rewrite RET, RET'. *)
+  (*   * admit. *)
+  (*   * admit. *)
+
+  (* -
+    rewrite (@denote_ocfg_prefix g1 g2 nil (g1 ++ g2) from to).
+    2,3: admit.
+    rewrite (@denote_ocfg_prefix (ocfg_rename σ g1) g2' nil (ocfg_rename σ g1 ++ g2') from to).
+    2,3: admit.
+    assert (exists b', find_block g2' to = Some b') as [b' LU'] by admit.
+    subst TO. apply cap_correct in tIN as [tINo tINi]. apply find_block_in_inputs in tINi as [b bIN]. vjmp. 2: vjmp.
+    * apply find_block_app_r_wf; trivial. apply bIN.
+    * apply find_block_app_r_wf; trivial. apply LU'.
+    *
+      admit.
+  - apply find_block_in_inputs in tIN as [b bIN]. vjmp. 2: vjmp.
+    * apply find_block_app_l_wf; trivial. apply bIN.
+    * apply find_block_app_l_wf; trivial. assert (bIN': find_block (ocfg_rename σ g1) to = Some b). admit. apply bIN'.
+    * admit. *)
+Admitted.
+
+Definition σfusion idA idB := fun (id: bid) => if decide (id=idB) then idA else id.
+
+Theorem Denotation_BlockFusion_correct (G G':ocfg) idA A idB B f to:
+  let σ := σfusion idA idB in
+  to <> idB ->
+  f <> idA ->
+  (idA, A, (idB, B, G')) ∈ (MatchAll (BlockFusion □) G) ->
+  ⟦ G' ∪ ({[idA:=A]} ∪ {[idB:=B]}) ⟧bs (f, to) ≈
+  ⟦ ocfg_rename σ G' ∪ {[idA:=fusion A B]} ⟧bs (σ f, to).
+Proof.
+  intros * ineq1 ineq2 IN.
+  apply Pattern_BlockFusion_correct in IN as (G1 & IN & FUS); auto.
+  apply Pattern_Graph_correct in IN; subst G1.
+  destruct FUS as [EQ LUA LUB PRED SUCC].
+  apply denote_ocfg_equiv; auto.
+  - unfold inputs. Search predecessors. Search outputs.
+
+  (* set (g := map_cfg_to_ocfg G).
+  match goal with
+    |- context[map_cfg_to_ocfg ?g] => set (g' := map_cfg_to_ocfg g)
+  end. 
+  set (σ := fun id => if eqb id (blk_id B) then blk_id A else id).
+  assert (EQg: g = rm_bk A (rm_bk B g) ++ [A;B]).
+  admit.
+  assert (EQg': g' = ocfg_rename σ (rm_bk A (rm_bk B g)) ++ [fusion A B]).
+  admit.
+  rewrite EQg, EQg'.
+  apply denote_ocfg_equiv.
+  - admit.
+  - admit.
+  - admit.
+  - admit.
+  - intros from header. rewrite cap_correct. intros [hINo hINi]. apply find_block_in_inputs in hINi as [b bIN].
+    (* rewrite denote_ocfg_unfold_in; cycle 1.
+    apply bIN.
+    rewrite denote_ocfg_unfold_in; cycle 1.
+    assert (bIN': find_block [fusion A B] header = Some b). admit. apply bIN'. *)
+    admit.
+  - admit. *)
+Admitted.
+
+End DenotationTheory.
+
+*)
