@@ -743,4 +743,4 @@ Proof.
   - admit. *)
 Admitted.
 
-End DenotationTheory.
+End Theory.
