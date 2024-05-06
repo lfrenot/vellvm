@@ -16,7 +16,24 @@ Import Head Focus Block Patterns gmap.
 (* Set Implicit Arguments. *)
 (* Block Fusion *)
 
-Definition fusion_code (A B: blk): code dtyp := A.(blk_code) ++ B.(blk_code).
+Definition promote_phi (idA : block_id) (Φ : local_id * phi dtyp) : option (instr_id * instr dtyp) :=
+  match Φ with
+  | (x, (Phi _ args)) =>
+      match args !! idA with
+      | None => None
+      | Some e => Some (IId x, INSTR_Op e)
+      end end.
+
+Definition promote_phis (idA : block_id) (Φs : list (local_id * phi dtyp)) : code dtyp :=
+  fold_left
+    (fun acc φ => match promote_phi idA φ with
+               | None => acc
+               | Some i => acc ++ [i]
+               end)
+    Φs [].
+
+Definition fusion_code (idA : block_id) (A B: blk): code dtyp :=
+  A.(blk_code) ++ promote_phis idA B.(blk_phis) ++ B.(blk_code).
 
 Definition fusion_comments (A B: blk) :=
   match (A.(blk_comments), B.(blk_comments)) with
@@ -26,9 +43,9 @@ Definition fusion_comments (A B: blk) :=
     | (_, _) => None
   end.
 
-Definition fusion (A B: blk): blk := {|
-  blk_phis       := B.(blk_phis);
-  blk_code       := fusion_code A B;
+Definition fusion (idA : block_id) (A B: blk): blk := {|
+  blk_phis       := A.(blk_phis);
+  blk_code       := fusion_code idA A B;
   blk_term       := B.(blk_term);
   blk_comments   := fusion_comments A B
 |}.
@@ -239,7 +256,7 @@ Import PostConditions.
 
 Theorem denote_ocfg_equiv (g1 g2 g2' : ocfg) (σ : bk_renaming) (nFROM nTO: gset bid) :
   inputs g2 ∩ inputs g2' ## nFROM -> nFROM ⊆ inputs g2 ∪ inputs g2' -> inputs g2' ∖ inputs g2 ⊆ nTO -> nTO ⊆ inputs g2 ∪ inputs g2' ->
-  nTO ## outputs g1 -> g1 ##ₘ g2 -> ocfg_rename σ g1 ##ₘ g2' -> 
+  nTO ## outputs g1 -> g1 ##ₘ g2 -> ocfg_rename σ g1 ##ₘ g2' ->
   dom_renaming σ nFROM g2 g2' ->
   denote_ocfg_equiv_cond g2 g2' nFROM nTO σ ->
   forall from to' to,
@@ -255,9 +272,9 @@ Proof.
   (* Either we are in the 'visible' graph or not. *)
   case (decide (to ∈ (inputs g1 ∪ inputs g2))) as [tIN'|tNIN']. apply elem_of_union in tIN' as [tIN|tIN].
   - (* if we enter g1: then process [g1], and get back to the whole thing *)
-    assert (σTO: σ to=to). { 
+    assert (σTO: σ to=to). {
       apply out_dom. assert (HNIN: to ∉ inputs g2 ∪ inputs g2'). rewrite elem_of_union. unfold inputs in *.
-      rewrite map_disjoint_dom in DIS, DISσ. intros [|]; set_solver. intros ?. apply HNIN. now apply nFROMs. 
+      rewrite map_disjoint_dom in DIS, DISσ. intros [|]; set_solver. intros ?. apply HNIN. now apply nFROMs.
     }
     pose proof find_block_in_inputs _ tIN as [bk tFIND].
     assert (FIND: (g1 ∪ g2) !! to = Some bk) by now simplify_map_eq.
@@ -298,9 +315,9 @@ Proof.
       assert (INf2: from2 ∈ inputs g2 ∩ inputs g2') by admit.
       assert (to2 ∉ nTO) by (intros H; apply NINt2; now apply nTOsub).
       assert (from2 ∉ nFROM) by set_solver.
-      assert (EQσ2: σ to2 = to2). { 
+      assert (EQσ2: σ to2 = to2). {
         apply out_dom. assert (HNIN: to2 ∉ inputs g2 ∪ inputs g2'). rewrite elem_of_union. unfold inputs in *.
-        rewrite map_disjoint_dom in DIS, DISσ. intros [|]; set_solver. intros ?. apply HNIN. now apply nFROMs. 
+        rewrite map_disjoint_dom in DIS, DISσ. intros [|]; set_solver. intros ?. apply HNIN. now apply nFROMs.
       } {
         case (decide (to2 ∈ inputs g1)) as [t2IN|t2NIN].
         - pose proof find_block_in_inputs _ t2IN as [bk tFIND].
@@ -327,8 +344,8 @@ Proof.
           rewrite <- inputs_ocfg_rename.
           all: set_solver.
       }
-  - 
-    assert (σTO: σ to = to). { 
+  -
+    assert (σTO: σ to = to). {
       assert (H: to ∉ inputs g2'). {
         intros ?. apply NINt. apply nTOsup. set_solver.
       } assert (H0: to ∉ inputs g2 ∪ inputs g2') by set_solver.
