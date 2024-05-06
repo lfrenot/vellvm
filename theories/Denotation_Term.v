@@ -164,8 +164,10 @@ Admitted.
 
 Definition denote_ocfg_equiv_cond (g g': ocfg) (nFROM nTO :gset bid) (σ: bid -> bid) :=
   forall origin header,
-    header ∉ nTO -> origin ∉ nFROM -> ⟦g⟧bs (origin, header) ≈ ⟦g'⟧bs (origin, σ header).
-
+    header ∈ inputs g ->
+    header ∉ nTO ->
+    origin ∉ nFROM ->
+    ⟦g⟧bs (origin, header) ≈ ⟦g'⟧bs (origin, σ header).
 
 Lemma find_block_some_ocfg_rename: forall g σ id b, g !! id = Some b -> (ocfg_rename σ g) !! id = Some (bk_term_rename σ b).
 Proof.
@@ -369,7 +371,7 @@ Theorem Denotation_BlockFusion_correct (G G':ocfg) idA A idB B f to:
   f <> idA ->
   (idA, A, (idB, B, G')) ∈ (MatchAll (BlockFusion □) G) ->
   ⟦ G' ∪ ({[idA:=A;idB:=B]}) ⟧bs (f, to) ≈
-  ⟦ ocfg_rename σ G' ∪ {[idB:=fusion A B]} ⟧bs (f, σ to).
+  ⟦ ocfg_rename σ G' ∪ {[idB:=fusion idA A B]} ⟧bs (f, σ to).
 Proof.
   intros * ineq1 ineq2 IN.
   apply Pattern_BlockFusion_correct in IN as (G1 & IN & FUS); auto.
@@ -393,7 +395,60 @@ Proof.
       + unfold inputs in *. rewrite dom_insert_L in H. rewrite dom_singleton_L in H |- *.
         subst σ. unfold σfusion. case_match; set_solver.
       + subst σ. unfold σfusion. assert (id ≠ idA) by now apply not_elem_of_singleton in H. now case_match.
-    * unfold denote_ocfg_equiv_cond. admit.
+    * unfold denote_ocfg_equiv_cond.
+      intros * H1 H2 H3.
+      assert (header = idA).
+      {
+        clear - H2 H1.
+        unfold inputs in *.
+        rewrite dom_insert_L, !dom_singleton_L in H1.
+        admit.
+      }
+      subst header.
+      subst σ. unfold σfusion.
+      case_match; try done.
+      simplify_eq.
+      rewrite ?denote_ocfg_in; try by simplify_map_eq.
+      destruct A.
+Arguments denote_code : simpl never.
+Arguments denote_phis : simpl never.
+Arguments promote_phis : simpl never.
+Opaque denote_phis.
+Opaque denote_code.
+
+cbn.
+setoid_rewrite bind_bind.
+ibind=; intros ?.
+setoid_rewrite bind_bind.
+rewrite denote_code_app; setoid_rewrite bind_bind.
+ibind=; intros ?.
+
+      assert (LEM: forall t id,
+                 terminator_outputs t = {[id]} ->
+                 ⟦ t ⟧t ≈ Ret (inl id)).
+      admit.
+      apply LEM in SUC.
+      rewrite SUC, bind_ret_l.
+      rewrite ?denote_ocfg_in; try by simplify_map_eq.
+      destruct B.
+      cbn.
+
+      rewrite denote_code_app; setoid_rewrite bind_bind.
+      ibind with eq.
+      {
+        admit.
+      }
+      intros ? ? <-.
+      rewrite bind_bind.
+      ibind=.
+      intros ?; ibind=.
+      intros [|]; [| reflexivity].
+    (* Note: in all due generality, could loop back on itself.
+       Need a proof by coinduction.
+     *)
+      admit.
+
+
     * now apply not_elem_of_singleton.
     * now apply not_elem_of_singleton.
 Admitted.
