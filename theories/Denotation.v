@@ -189,28 +189,44 @@ Proof.
   apply inputs_ocfg_rename.
 Qed.
 
-(*
-
-block fusion: je rentrais par a, je rentre maintenant par b
-
-b = σ a
-
-σ : renaming map
-
- *)
-
-
 Lemma raise_raise_eutt : forall {E A} Q `{FailureE -< E} s,
     eutt Q (@raise E A _ s) (@raise E A _ s).
-Admitted.
+Proof.
+  intros.
+  ibind=; intros [].
+Qed.
 
 Lemma raise_raiseUB_eutt : forall {E A} Q `{UBE -< E} s,
     eutt Q (@raiseUB E _ A s) (@raiseUB E _ A s).
-Admitted.
+Proof.
+  intros.
+  ibind=; intros [].
+Qed.
+Import Utils.Monads.
+
+Lemma map_monad_itree_Forall2 :
+  forall {A B E} (l l' : list A) (f f' : A -> itree E B) (P : B -> B -> Prop),
+    Forall2 (fun x y => eutt P (f x) (f' y)) l l' ->
+    eutt (Forall2 P) (map_monad f l) (map_monad f' l').
+Proof.
+  intros * HIND.
+  revert l' HIND.
+  induction l as [| a l IH]; intros l' HIND.
+  - apply Forall2_nil_inv_l in HIND; subst.
+    by apply eutt_Ret.
+  - apply Forall2_cons_inv_l in HIND as (y & l'' & Pf & HIND & ->).
+    ibind;[apply Pf |].
+    intros * HP.
+    ibind; [by apply IH |].
+    intros ?? HFORALL; apply eutt_Ret.
+    by apply Forall2_cons.
+Qed.
+
+From stdpp Require Import strings.
 
 Lemma term_rename_eutt :
-    forall term σ,
-      eutt (sum_rel (λ a b : bid, σ a = b) eq) ⟦ term ⟧t ⟦ term_rename σ term ⟧t.
+  forall term σ,
+    eutt (sum_rel (λ a b : bid, σ a = b) eq) ⟦ term ⟧t ⟦ term_rename σ term ⟧t.
 Proof with try (now apply raise_raise_eutt || now apply raise_raiseUB_eutt || now apply eutt_Ret; auto).
   intros [] ?...
   - destruct v; cbn.
@@ -224,11 +240,37 @@ Proof with try (now apply raise_raise_eutt || now apply raise_raiseUB_eutt || no
     ibind=; intros ?.
     ibind=; intros ?.
     case_match...
-    ibind with (Forall2 (fun '(_,a) '(_,b) => σ a = b)).
-    + admit. (* TODO YZ *)
+    ibind with (Forall2 (fun '(x,a) '(y,b) => x = y /\ σ a = b)).
+    + apply map_monad_itree_Forall2.
+      apply Util.Forall2_forall.
+      split.
+      symmetry; by apply map_length.
+      intros ? [[] ?] [[] ?] IN IN'.
+      apply ListUtil.Nth_map_iff in IN' as ([] & ? & ?).
+      red in IN,H1 |-.
+      rewrite IN in H1; inv H1.
+      ibind=; intros ?.
+      by apply eutt_Ret.
     + intros * INV.
-      admit. (* TODO YZ *)
-Admitted.
+      unfold lift_err.
+      assert (forall b, select_switch u0 default_dest u1 = b ->
+                   select_switch u0 (σ default_dest) u2 = match b with | inl b => inl b | inr b => inr (σ b) end).
+      {
+        clear - INV.
+        revert u2 INV.
+        induction u1 as [ | [] u1 IH]; intros u2 HIND ? EQ.
+        - by apply Forall2_nil_inv_l in HIND; subst.
+        - apply Forall2_cons_inv_l in HIND as ([] & l'' & (-> & <-) & HIND & ->).
+          subst.
+          destruct u0; cbn in *; simplify_eq; try done.
+          all: destruct d0; auto.
+          all: case_match; auto.
+      }
+
+      case_match; specialize (H0 _ eq_refl); rewrite H0.
+      apply raise_raise_eutt.
+      by apply eutt_Ret; constructor.
+Qed.
 
 Lemma bk_phi_rename_eutt :
     forall bk σ from,
@@ -245,6 +287,20 @@ Proof.
   apply term_rename_eutt.
 Qed.
 Import PostConditions.
+
+Lemma has_post_enrich_eutt {E R S Qt Qu RR} (t : itree E R) (u : itree E S):
+  t ⤳ Qt ->
+  u ⤳ Qu ->
+  eutt RR t u ->
+  eutt (fun x y => Qt x /\ Qu y /\ RR x y) t u.
+Proof.
+  intros HP HQ HEQ.
+  bind_ret_r1.
+  bind_ret_r2.
+  eapply eutt_post_bind_gen; eauto.
+  intros.
+  by apply eutt_Ret.
+Qed.
 
 Theorem denote_ocfg_equiv (g1 g2 g2' : ocfg) (σ : bk_renaming) (nFROM nTO: gset bid) :
   inputs g2 ∩ inputs g2' ## nFROM -> nFROM ⊆ inputs g2 ∪ inputs g2' -> inputs g2' ∖ inputs g2 ⊆ nTO -> nTO ⊆ inputs g2 ∪ inputs g2' ->
@@ -277,14 +333,21 @@ Proof.
     rewrite denote_ocfg_in_eq_itree; [| exact FIND'].
     (* Then we start with a first block and then remaining of processing g1 *)
     ebind.
-    econstructor; [apply bk_phi_rename_eutt |].
-    intros ?? [].
+    econstructor.
+    eapply has_post_enrich_eutt;
+      [apply denote_bk_exits_in_outputs|
+        apply denote_bk_exits_in_outputs|
+        apply bk_phi_rename_eutt].
+    intros ?? (H1 & H2 & H3).
+    destruct H3.
     + etau.
       ebase.
       right.
       rewrite EQσ,σTO.
       apply cihL; auto.
-      * assert (a1 ∈ outputs g1) by admit. (* TODO YZ meta-theory has_post/eutt *)
+      * assert (a1 ∈ outputs g1).
+        cbn in *.
+        eapply outputs_elem_of; eauto.
         set_solver.
       * eapply not_elem_of_weaken. 2: apply nFROMs. intros toIN. apply elem_of_union in toIN as [toIN|toIN].
         -- unfold inputs in *. apply map_disjoint_dom in DIS. set_solver.
@@ -295,8 +358,13 @@ Proof.
     rewrite (@denote_ocfg_prefix_eq_itree (ocfg_rename σ g1) g2' ∅ (ocfg_rename σ g1 ∪ g2') from to'); cycle 1.
     symmetry. apply map_union_empty.
     ebind; econstructor.
-    + subst to'; apply CND; done.
-    + intros ?? <-.
+    + subst to'.
+      eapply has_post_enrich_eutt;
+        [apply denote_ocfg_exits_in_outputs; cbn; auto |
+          apply denote_ocfg_exits_in_outputs; cbn; auto|
+        ].
+      apply CND; done.
+    + intros ?? (H1 & H2 & <-).
       case u1; intros; [| eret].
       destruct p as [from2 to2].
       (* We need to know that to2 ∉ inputs g2
@@ -319,13 +387,20 @@ Proof.
           assert (FIND': (ocfg_rename σ g1 ∪ g2') !! to2 = Some (bk_term_rename σ bk)) by now simplify_map_eq.
           rewrite denote_ocfg_in_eq_itree; [| exact FIND'].
           ebind.
-          econstructor; [apply bk_phi_rename_eutt |].
-          intros ?? [].
+          econstructor.
+          eapply has_post_enrich_eutt;
+          [apply denote_bk_exits_in_outputs|
+          apply denote_bk_exits_in_outputs|
+          apply bk_phi_rename_eutt].
+          intros ?? (? & ? & H3).
+          destruct H3.
           + etau.
             ebase.
             right.
             apply cihL; auto.
-            assert (a1 ∈ outputs g1) by admit. (* TODO YZ meta-theory has_post/eutt *)
+            assert (a1 ∈ outputs g1).
+            cbn in *.
+            eapply outputs_elem_of; eauto.
             set_solver.
           + eret; subst; auto.
         - rewrite denote_ocfg_nin_eq_itree.
@@ -373,7 +448,7 @@ Proof.
   intros * NINh NINo.
   apply not_elem_of_singleton in NINh, NINo.
   case (decide (header = idA)) as [->|NEQ].
-  
+
   - subst σ. unfold σfusion.
     case_match; try done.
     simplify_eq.
@@ -403,10 +478,10 @@ Proof.
     setoid_rewrite bind_bind.
     ebind. econstructor. apply promote_phis_correct. intros [] ? <-.
     ebind. econstructor. reflexivity. intros [] ? <-.
-    ebind. econstructor. apply term_rename_eutt. 
+    ebind. econstructor. apply term_rename_eutt.
     intros [] [] REL; inversion REL.
     * etau. rewrite <- SUC. rewrite <- H2. ebase. right. apply cihL.
-      + admit. 
+      + admit.
       (* assert (b ∈ outputs {[idB := fusion (σfusion idA idB) idA {| blk_phis := phisA; blk_code := codeA; blk_term := termA; blk_comments := cA |} {| blk_phis := phisB; blk_code := codeB; blk_term := termB; blk_comments := cB |}]}) by admit. (* TODO YZ meta-theory has_post/eutt *)
         unfold outputs in H3. unfold outputs_acc in H3. rewrite fold_bk_acc_singleton in H3. unfold successors in H3. cbn in H3.
         apply not_elem_of_singleton. intros ?. subst a1 a2 b.
@@ -416,7 +491,7 @@ Proof.
         }  *)
       + now apply not_elem_of_singleton.
     * eret. now subst.
-  - assert (EQσ: σ header = header). { 
+  - assert (EQσ: σ header = header). {
       subst σ. unfold σfusion. case_match. now subst. reflexivity.
     } rewrite EQσ.
     rewrite denote_ocfg_nin_eq_itree; [|now simplify_map_eq].
