@@ -357,15 +357,16 @@ Proof.
           apply denote_ocfg_exits_all; cbn; auto|
         ].
       apply CND; done.
-    + intros ?? (H1 & H2 & <-).
-      case u1; intros; [| eret].
+    + intros ?? ([IN1 NIN1] & [IN2 NIN2] & <-).
+      destruct u1; intros; [| eret].
       destruct p as [from2 to2].
       (* We need to know that to2 ∉ inputs g2
          Hence we are back in the first case
       *)
       (* g2 and g2' end with the same destination, so: *)
-      assert (NINt2: to2 ∉ inputs g2 ∪ inputs g2') by admit.
-      assert (INf2: from2 ∈ inputs g2 ∩ inputs g2') by admit.
+      assert (NINt2: to2 ∉ inputs g2 ∪ inputs g2') by (cbn in *; set_solver).
+      assert (INf2: from2 ∈ inputs g2 ∩ inputs g2').
+      by (cbn in *; set_solver).
       assert (to2 ∉ nTO) by (intros H; apply NINt2; now apply nTOsub).
       assert (from2 ∉ nFROM) by set_solver.
       assert (EQσ2: σ to2 = to2). {
@@ -419,7 +420,7 @@ Proof.
     all: rewrite inputs_union; trivial.
     rewrite <- inputs_ocfg_rename.
     set_solver.
-Admitted.
+Qed.
 
 Definition σfusion idA idB := fun (id: bid) => if decide (id=idA) then idB else id.
 
