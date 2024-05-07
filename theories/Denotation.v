@@ -16,6 +16,59 @@ Import Head Focus Block Patterns gmap.
 (* Set Implicit Arguments. *)
 (* Block Fusion *)
 
+(* BEGIN TO MOVE *)
+Lemma raise_raise_eutt : forall {E A} Q `{FailureE -< E} s,
+    eutt Q (@raise E A _ s) (@raise E A _ s).
+Proof.
+  intros.
+  ibind=; intros [].
+Qed.
+
+Lemma raise_raiseUB_eutt : forall {E A} Q `{UBE -< E} s,
+    eutt Q (@raiseUB E _ A s) (@raiseUB E _ A s).
+Proof.
+  intros.
+  ibind=; intros [].
+Qed.
+Import Utils.Monads.
+
+Lemma map_monad_itree_Forall2 :
+  forall {A B E} (l l' : list A) (f f' : A -> itree E B) (P : B -> B -> Prop),
+    Forall2 (fun x y => eutt P (f x) (f' y)) l l' ->
+    eutt (Forall2 P) (map_monad f l) (map_monad f' l').
+Proof.
+  intros * HIND.
+  revert l' HIND.
+  induction l as [| a l IH]; intros l' HIND.
+  - apply Forall2_nil_inv_l in HIND; subst.
+    by apply eutt_Ret.
+  - apply Forall2_cons_inv_l in HIND as (y & l'' & Pf & HIND & ->).
+    ibind;[apply Pf |].
+    intros * HP.
+    ibind; [by apply IH |].
+    intros ?? HFORALL; apply eutt_Ret.
+    by apply Forall2_cons.
+Qed.
+
+Import PostConditions.
+
+Lemma has_post_enrich_eutt {E R S Qt Qu RR} (t : itree E R) (u : itree E S):
+  t ⤳ Qt ->
+  u ⤳ Qu ->
+  eutt RR t u ->
+  eutt (fun x y => Qt x /\ Qu y /\ RR x y) t u.
+Proof.
+  intros HP HQ HEQ.
+  bind_ret_r1.
+  bind_ret_r2.
+  eapply eutt_post_bind_gen; eauto.
+  intros.
+  by apply eutt_Ret.
+Qed.
+
+(* END TO MOVE *)
+
+
 Definition bk_renaming := bid -> bid.
 
 Definition term_rename (σ: bk_renaming) (t: terminator dtyp): terminator dtyp := match t with
@@ -141,18 +194,6 @@ Import SemNotations.
 Import MonadNotation.
 Import Events.DV.
 
-Lemma denote_ocfg_prefix_eq_itree:
-  forall (prefix bks' postfix : ocfg) [bks : ocfg] (from to : bid),
-    bks = prefix ∪ bks' ∪ postfix ->
-    ⟦ bks ⟧bs (from, to) ≅
-    x_ <- ⟦ bks' ⟧bs (from, to);
-    match x_ with
-      | inl x => ⟦ bks ⟧bs x
-      | inr x => Ret (inr x)
-  end.
-Proof.
-Admitted.
-
 Definition denote_ocfg_equiv_cond (g g': ocfg) (nFROM nTO :gset bid) (σ: bid -> bid) :=
   forall origin header,
     header ∉ nTO ->
@@ -187,39 +228,6 @@ Qed.
 Lemma dom_ocfg_rename: forall g σ, dom g = dom (ocfg_rename σ g).
 Proof.
   apply inputs_ocfg_rename.
-Qed.
-
-Lemma raise_raise_eutt : forall {E A} Q `{FailureE -< E} s,
-    eutt Q (@raise E A _ s) (@raise E A _ s).
-Proof.
-  intros.
-  ibind=; intros [].
-Qed.
-
-Lemma raise_raiseUB_eutt : forall {E A} Q `{UBE -< E} s,
-    eutt Q (@raiseUB E _ A s) (@raiseUB E _ A s).
-Proof.
-  intros.
-  ibind=; intros [].
-Qed.
-Import Utils.Monads.
-
-Lemma map_monad_itree_Forall2 :
-  forall {A B E} (l l' : list A) (f f' : A -> itree E B) (P : B -> B -> Prop),
-    Forall2 (fun x y => eutt P (f x) (f' y)) l l' ->
-    eutt (Forall2 P) (map_monad f l) (map_monad f' l').
-Proof.
-  intros * HIND.
-  revert l' HIND.
-  induction l as [| a l IH]; intros l' HIND.
-  - apply Forall2_nil_inv_l in HIND; subst.
-    by apply eutt_Ret.
-  - apply Forall2_cons_inv_l in HIND as (y & l'' & Pf & HIND & ->).
-    ibind;[apply Pf |].
-    intros * HP.
-    ibind; [by apply IH |].
-    intros ?? HFORALL; apply eutt_Ret.
-    by apply Forall2_cons.
 Qed.
 
 From stdpp Require Import strings.
@@ -286,21 +294,6 @@ Proof.
   setoid_rewrite bind_ret_l.
   apply term_rename_eutt.
 Qed.
-Import PostConditions.
-
-Lemma has_post_enrich_eutt {E R S Qt Qu RR} (t : itree E R) (u : itree E S):
-  t ⤳ Qt ->
-  u ⤳ Qu ->
-  eutt RR t u ->
-  eutt (fun x y => Qt x /\ Qu y /\ RR x y) t u.
-Proof.
-  intros HP HQ HEQ.
-  bind_ret_r1.
-  bind_ret_r2.
-  eapply eutt_post_bind_gen; eauto.
-  intros.
-  by apply eutt_Ret.
-Qed.
 
 Theorem denote_ocfg_equiv (g1 g2 g2' : ocfg) (σ : bk_renaming) (nFROM nTO: gset bid) :
   inputs g2 ∩ inputs g2' ## nFROM -> nFROM ⊆ inputs g2 ∪ inputs g2' -> inputs g2' ∖ inputs g2 ⊆ nTO -> nTO ⊆ inputs g2 ∪ inputs g2' ->
@@ -353,15 +346,15 @@ Proof.
         -- unfold inputs in *. apply map_disjoint_dom in DIS. set_solver.
         -- unfold inputs in *. apply map_disjoint_dom in DISσ. rewrite <- dom_ocfg_rename in DISσ. set_solver.
     + eret; subst; auto.
-  - rewrite (@denote_ocfg_prefix_eq_itree g1 g2 ∅ (g1 ∪ g2) from to); cycle 1.
+  - rewrite (@denote_ocfg_prefix_eq_itree g1 g2 ∅ (g1 ∪ g2) from to); cycle 1; auto.
     symmetry. apply map_union_empty.
-    rewrite (@denote_ocfg_prefix_eq_itree (ocfg_rename σ g1) g2' ∅ (ocfg_rename σ g1 ∪ g2') from to'); cycle 1.
+    rewrite (@denote_ocfg_prefix_eq_itree (ocfg_rename σ g1) g2' ∅ (ocfg_rename σ g1 ∪ g2') from to'); cycle 1; auto.
     symmetry. apply map_union_empty.
     ebind; econstructor.
     + subst to'.
       eapply has_post_enrich_eutt;
-        [apply denote_ocfg_exits_in_outputs; cbn; auto |
-          apply denote_ocfg_exits_in_outputs; cbn; auto|
+        [apply denote_ocfg_exits_all; cbn; auto |
+          apply denote_ocfg_exits_all; cbn; auto|
         ].
       apply CND; done.
     + intros ?? (H1 & H2 & <-).
