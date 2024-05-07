@@ -16,6 +16,32 @@ Import Head Focus Block Patterns gmap.
 (* Set Implicit Arguments. *)
 (* Block Fusion *)
 
+Definition bk_renaming := bid -> bid.
+
+Definition term_rename (σ: bk_renaming) (t: terminator dtyp): terminator dtyp := match t with
+  | TERM_Br v br1 br2 => TERM_Br v (σ br1) (σ br2)
+  | TERM_Br_1 br => TERM_Br_1 (σ br)
+  | TERM_Switch v default_dest brs => TERM_Switch v (σ default_dest) (map (fun '(x, id) => (x, σ id)) brs)
+  | TERM_IndirectBr v brs => TERM_IndirectBr v (map σ brs)
+  | TERM_Invoke fnptrval args to_label unwind_label => TERM_Invoke fnptrval args (σ to_label) (σ unwind_label)
+  | _ => t
+end.
+
+Definition bk_term_rename (σ : bk_renaming) (b: blk): blk := {|
+  blk_phis       := b.(blk_phis);
+  blk_code       := b.(blk_code);
+  blk_term       := term_rename σ b.(blk_term);
+  blk_comments   := b.(blk_comments)
+|}.
+
+Definition ocfg_rename (σ : bk_renaming) (g: ocfg): ocfg := (bk_term_rename σ) <$> g.
+
+Record dom_renaming (σ : bk_renaming) (s : gset bid) (g g': ocfg) : Prop :=
+  {
+    in_dom : forall id, id ∈ inputs g -> (σ id) ∈ inputs g';
+    out_dom : forall id, id ∉ s -> (σ id) = id
+  }.
+
 Definition promote_phi (idA : block_id) (Φ : local_id * phi dtyp) : option (instr_id * instr dtyp) :=
   match Φ with
   | (x, (Phi _ args)) =>
@@ -43,47 +69,12 @@ Definition fusion_comments (A B: blk) :=
     | (_, _) => None
   end.
 
-Definition fusion (idA : block_id) (A B: blk): blk := {|
+Definition fusion (σ: bk_renaming) (idA : block_id) (A B: blk): blk := {|
   blk_phis       := A.(blk_phis);
   blk_code       := fusion_code idA A B;
-  blk_term       := B.(blk_term);
+  blk_term       := term_rename σ B.(blk_term);
   blk_comments   := fusion_comments A B
 |}.
-
-(* Import SemNotations. *)
-(* todo better representation*)
-Definition bk_renaming := bid -> bid.
-
-(* Definition exps_rename σ (id: bid) e (φ: gmap bid (exp dtyp)) := {[σ id := e]} ∪ φ.
-
-Definition phi_rename (σ : bk_renaming) (ϕ:  phi dtyp): phi dtyp :=
-  match ϕ with
-    | Phi τ exps => Phi τ (map_fold (exps_rename σ) ∅ exps)
-  end. *)
-
-Definition term_rename (σ: bk_renaming) (t: terminator dtyp): terminator dtyp := match t with
-  | TERM_Br v br1 br2 => TERM_Br v (σ br1) (σ br2)
-  | TERM_Br_1 br => TERM_Br_1 (σ br)
-  | TERM_Switch v default_dest brs => TERM_Switch v (σ default_dest) (map (fun '(x, id) => (x, σ id)) brs)
-  | TERM_IndirectBr v brs => TERM_IndirectBr v (map σ brs)
-  | TERM_Invoke fnptrval args to_label unwind_label => TERM_Invoke fnptrval args (σ to_label) (σ unwind_label)
-  | _ => t
-end.
-
-Definition bk_term_rename (σ : bk_renaming) (b: blk): blk := {|
-  blk_phis       := b.(blk_phis);
-  blk_code       := b.(blk_code);
-  blk_term       := term_rename σ b.(blk_term);
-  blk_comments   := b.(blk_comments)
-|}.
-
-Definition ocfg_rename (σ : bk_renaming) (g: ocfg): ocfg := (bk_term_rename σ) <$> g.
-
-Record dom_renaming (σ : bk_renaming) (s : gset bid) (g g': ocfg) : Prop :=
-  {
-    in_dom : forall id, id ∈ inputs g -> (σ id) ∈ inputs g';
-    out_dom : forall id, id ∉ s -> (σ id) = id
-  }.
 
 Module Type Theory (LP : LLVMParams.LLVMParams).
   Module DT := DenotationTheory.Make LP.
@@ -164,7 +155,6 @@ Admitted.
 
 Definition denote_ocfg_equiv_cond (g g': ocfg) (nFROM nTO :gset bid) (σ: bid -> bid) :=
   forall origin header,
-    header ∈ inputs g ->
     header ∉ nTO ->
     origin ∉ nFROM ->
     ⟦g⟧bs (origin, header) ≈ ⟦g'⟧bs (origin, σ header).
@@ -365,13 +355,82 @@ Admitted.
 
 Definition σfusion idA idB := fun (id: bid) => if decide (id=idA) then idB else id.
 
+Lemma promote_phis_correct: forall φ id, ⟦ φ ⟧Φs (id) ≈ ⟦ promote_phis id φ ⟧c.
+Admitted.
+
+Lemma fusion_correct (G G':ocfg) idA A idB B:
+  let σ := σfusion idA idB in
+  (idA, A, (idB, B, G')) ∈ (MatchAll (BlockFusion □) G) ->
+  denote_ocfg_equiv_cond {[idA := A; idB := B]} {[idB := fusion σ idA A B]} {[idA]} {[idB]} σ.
+Proof.
+  intros σ IN. apply Pattern_BlockFusion_correct in IN as (G1 & IN & FUS); auto.
+  apply Pattern_Graph_correct in IN; subst G1.
+  destruct FUS as [EQ LUA LUB PRED SUCC].
+  unfold denote_ocfg_equiv_cond.
+  einit.
+  ecofix cih.
+  clear cihH.
+  intros * NINh NINo.
+  apply not_elem_of_singleton in NINh, NINo.
+  case (decide (header = idA)) as [->|NEQ].
+  
+  - subst σ. unfold σfusion.
+    case_match; try done.
+    simplify_eq.
+    rewrite ?denote_ocfg_in_eq_itree; try by simplify_map_eq.
+    destruct A as [phisA codeA termA cA].
+
+    Arguments denote_code : simpl never.
+    Arguments denote_phis : simpl never.
+    Arguments promote_phis : simpl never.
+    Opaque denote_phis.
+    Opaque denote_code.
+
+    cbn.
+    setoid_rewrite bind_bind.
+    ebind. econstructor; [reflexivity|]. intros [] ? <-.
+    setoid_rewrite bind_bind.
+    rewrite denote_code_app_eq_itree.
+    setoid_rewrite bind_bind.
+    ebind. econstructor; [reflexivity|]. intros [] ? <-.
+    cbn in SUC. rewrite SUC. cbn. rewrite bind_ret_l.
+    rewrite tau_euttge.
+    rewrite ?denote_ocfg_in_eq_itree; try by simplify_map_eq.
+    destruct B as [phisB codeB termB cB].
+    cbn.
+    setoid_rewrite bind_bind.
+    rewrite denote_code_app_eq_itree.
+    setoid_rewrite bind_bind.
+    ebind. econstructor. apply promote_phis_correct. intros [] ? <-.
+    ebind. econstructor. reflexivity. intros [] ? <-.
+    ebind. econstructor. apply term_rename_eutt. 
+    intros [] [] REL; inversion REL.
+    * etau. rewrite <- SUC. rewrite <- H2. ebase. right. apply cihL.
+      + admit. 
+      (* assert (b ∈ outputs {[idB := fusion (σfusion idA idB) idA {| blk_phis := phisA; blk_code := codeA; blk_term := termA; blk_comments := cA |} {| blk_phis := phisB; blk_code := codeB; blk_term := termB; blk_comments := cB |}]}) by admit. (* TODO YZ meta-theory has_post/eutt *)
+        unfold outputs in H3. unfold outputs_acc in H3. rewrite fold_bk_acc_singleton in H3. unfold successors in H3. cbn in H3.
+        apply not_elem_of_singleton. intros ?. subst a1 a2 b.
+        assert (idB ∈ predecessors idB G). {
+          eapply predecessors_elem_of. apply PRED.
+          unfold successors. cbn. unfold σfusion in H3.
+        }  *)
+      + now apply not_elem_of_singleton.
+    * eret. now subst.
+  - assert (EQσ: σ header = header). { 
+      subst σ. unfold σfusion. case_match. now subst. reflexivity.
+    } rewrite EQσ.
+    rewrite denote_ocfg_nin_eq_itree; [|now simplify_map_eq].
+    rewrite denote_ocfg_nin_eq_itree; [|now simplify_map_eq].
+    eret.
+Admitted.
+
 Theorem Denotation_BlockFusion_correct (G G':ocfg) idA A idB B f to:
   let σ := σfusion idA idB in
   to <> idB ->
   f <> idA ->
   (idA, A, (idB, B, G')) ∈ (MatchAll (BlockFusion □) G) ->
   ⟦ G' ∪ ({[idA:=A;idB:=B]}) ⟧bs (f, to) ≈
-  ⟦ ocfg_rename σ G' ∪ {[idB:=fusion idA A B]} ⟧bs (f, σ to).
+  ⟦ ocfg_rename σ G' ∪ {[idB:=fusion σ idA A B]} ⟧bs (f, σ to).
 Proof.
   intros * ineq1 ineq2 IN.
   apply Pattern_BlockFusion_correct in IN as (G1 & IN & FUS); auto.
@@ -395,60 +454,8 @@ Proof.
       + unfold inputs in *. rewrite dom_insert_L in H. rewrite dom_singleton_L in H |- *.
         subst σ. unfold σfusion. case_match; set_solver.
       + subst σ. unfold σfusion. assert (id ≠ idA) by now apply not_elem_of_singleton in H. now case_match.
-    * unfold denote_ocfg_equiv_cond.
-      intros * H1 H2 H3.
-      assert (header = idA).
-      {
-        clear - H2 H1.
-        unfold inputs in *.
-        rewrite dom_insert_L, !dom_singleton_L in H1.
-        admit.
-      }
-      subst header.
-      subst σ. unfold σfusion.
-      case_match; try done.
-      simplify_eq.
-      rewrite ?denote_ocfg_in; try by simplify_map_eq.
-      destruct A.
-Arguments denote_code : simpl never.
-Arguments denote_phis : simpl never.
-Arguments promote_phis : simpl never.
-Opaque denote_phis.
-Opaque denote_code.
-
-cbn.
-setoid_rewrite bind_bind.
-ibind=; intros ?.
-setoid_rewrite bind_bind.
-rewrite denote_code_app; setoid_rewrite bind_bind.
-ibind=; intros ?.
-
-      assert (LEM: forall t id,
-                 terminator_outputs t = {[id]} ->
-                 ⟦ t ⟧t ≈ Ret (inl id)).
-      admit.
-      apply LEM in SUC.
-      rewrite SUC, bind_ret_l.
-      rewrite ?denote_ocfg_in; try by simplify_map_eq.
-      destruct B.
-      cbn.
-
-      rewrite denote_code_app; setoid_rewrite bind_bind.
-      ibind with eq.
-      {
-        admit.
-      }
-      intros ? ? <-.
-      rewrite bind_bind.
-      ibind=.
-      intros ?; ibind=.
-      intros [|]; [| reflexivity].
-    (* Note: in all due generality, could loop back on itself.
-       Need a proof by coinduction.
-     *)
-      admit.
-
-
+    * eapply fusion_correct. apply Pattern_BlockFusion_correct. exists G'. split; cycle 1.
+      split. apply EQ. all:trivial. cbn. left.
     * now apply not_elem_of_singleton.
     * now apply not_elem_of_singleton.
 Admitted.
