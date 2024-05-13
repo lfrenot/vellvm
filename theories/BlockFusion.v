@@ -19,7 +19,12 @@ Definition is_seq (A: blk) (id: bid) := match A.(blk_term) with
   | _ => false
 end.
 
-Definition BlockFusion_f {S}: (bid * blk * (bid * blk * S) → bool) := fun '(_, A, (idB, _, _)) => is_seq A idB.
+Definition no_phi (B: blk) := match B.(blk_phis) with
+  | [] => true
+  | _ => false
+end.
+
+Definition BlockFusion_f {S}: (bid * blk * (bid * blk * S) → bool) := fun '(_, A, (idB, B, _)) => is_seq A idB && no_phi B.
 
 Definition BlockFusion {S} (P: Pattern S) :=
     (Block (Head P)) when BlockFusion_f.
@@ -30,7 +35,8 @@ Record BlockFusion_sem idA A idB B (G G': ocfg): Prop := {
   INA: G !! idA = Some A;
   INB: G !! idB = Some B;
   PRED: predecessors idB G = {[idA]};
-  SUC: A.(blk_term) = TERM_Br_1 idB
+  SUC: A.(blk_term) = TERM_Br_1 idB;
+  PHI: B.(blk_phis) = []
 }.
 
 Lemma is_seq_correct:
@@ -40,6 +46,12 @@ Proof.
   unfold is_seq. intros A id. split; intro SUC.
   - case_match; try discriminate. now case_match; subst.
   - case_match; try discriminate. case_match; auto. inversion SUC. now subst.
+Qed.
+
+Lemma no_phi_correct:
+  forall B, no_phi B = true <-> B.(blk_phis) = [].
+Proof.
+  unfold no_phi. intros. case_match; split; intros; auto; discriminate.
 Qed.
 
 Lemma emptyunion: forall (m: gset bid), m = m∪∅.
@@ -55,10 +67,12 @@ Theorem Pattern_BlockFusion_correct {S}: forall idA A idB B G (P: Pattern S) X,
 Proof.
   intros *. unfold BlockFusion.
   rewrite Pattern_When_correct, Pattern_Block_correct. unfold BlockFusion_f.
-  setoid_rewrite Pattern_Head_correct. 
-  setoid_rewrite is_seq_correct.
+  setoid_rewrite Pattern_Head_correct.
   split.
-  - intros (SUCC & G' & [] & G0 & [] & INX). exists G0.
+  - intros (SUCC & G' & [] & G0 & [] & INX).
+    apply andb_prop in SUCC as [SUCC PHI].
+    apply is_seq_correct in SUCC. apply no_phi_correct in PHI.
+    exists G0.
     assert (idA <> idB) by (intro; simplify_map_eq).
     split; trivial. split; trivial.
     * set_solver.
@@ -68,7 +82,9 @@ Proof.
       unfold predecessors_acc, is_predecessor. break_match_goal. trivial. break_match_hyp. discriminate.
       unfold successors in n. rewrite SUCC in n. cbn in n. set_solver.
       rewrite EQp. set_solver. subst. now simplify_map_eq.
-  - intros (G' & INX & [EQ NEQ INA INB PRED SUC]). split; trivial. exists (delete idA G). split. split; trivial.
+  - intros (G' & INX & [EQ NEQ INA INB PRED SUC]). split.
+    apply andb_true_intro. split. now apply is_seq_correct. now apply no_phi_correct.
+    exists (delete idA G). split. split; trivial.
     exists G'. split; trivial. split; trivial. now simplify_map_eq.
     pose proof insert_delete G _ _ INA as INDE. rewrite <- INDE in PRED.
     rewrite predecessors_insert in PRED. 

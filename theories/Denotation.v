@@ -13,6 +13,7 @@ Import Map MapF MapF.P MapF.P.F.
 Import IdOT MapCFG Head Focus Block Patterns. *)
 From stdpp Require Import prelude fin_maps.
 Import Head Focus Block Patterns gmap.
+From stdpp Require Import strings.
 (* Set Implicit Arguments. *)
 (* Block Fusion *)
 
@@ -230,7 +231,6 @@ Proof.
   apply inputs_ocfg_rename.
 Qed.
 
-From stdpp Require Import strings.
 
 Lemma term_rename_eutt :
   forall term σ,
@@ -424,8 +424,6 @@ Qed.
 
 Definition σfusion idA idB := fun (id: bid) => if decide (id=idA) then idB else id.
 
-Lemma promote_phis_correct: forall φ id, ⟦ φ ⟧Φs (id) ≈ ⟦ promote_phis id φ ⟧c.
-Admitted.
 
 Lemma fusion_correct (G G':ocfg) idA A idB B:
   let σ := σfusion idA idB in
@@ -434,7 +432,7 @@ Lemma fusion_correct (G G':ocfg) idA A idB B:
 Proof.
   intros σ IN. apply Pattern_BlockFusion_correct in IN as (G1 & IN & FUS); auto.
   apply Pattern_Graph_correct in IN; subst G1.
-  destruct FUS as [EQ LUA LUB PRED SUCC].
+  destruct FUS as [EQ NEQAB LUA LUB PRED SUCC PHI].
   unfold denote_ocfg_equiv_cond.
   einit.
   ecofix cih.
@@ -462,20 +460,22 @@ Proof.
     rewrite denote_code_app_eq_itree.
     setoid_rewrite bind_bind.
     ebind. econstructor; [reflexivity|]. intros [] ? <-.
-    cbn in SUC. rewrite SUC. cbn. rewrite bind_ret_l.
+    cbn in SUCC. rewrite SUCC. cbn. rewrite bind_ret_l.
     rewrite tau_euttge.
     rewrite ?denote_ocfg_in_eq_itree; try by simplify_map_eq.
     destruct B as [phisB codeB termB cB].
-    cbn.
+    cbn in *.
     setoid_rewrite bind_bind.
     rewrite denote_code_app_eq_itree.
     setoid_rewrite bind_bind.
-    ebind. econstructor. apply promote_phis_correct. intros [] ? <-.
+    ebind. econstructor. rewrite !PHI. unfold promote_phis. cbn. rewrite denote_phis_nil. rewrite denote_code_nil. reflexivity. intros [] ? <-.
     ebind. econstructor. reflexivity. intros [] ? <-.
     ebind. econstructor. apply term_rename_eutt.
     intros [] [] REL; inversion REL.
-    * etau. rewrite <- SUC. rewrite <- H2. ebase. right. apply cihL.
-      + admit.
+    * etau. rewrite <- SUCC. rewrite <- H2. ebase. right. apply cihL.
+      + subst. case_match.
+        -- inversion REL. rewrite H0 in H3. subst. set_solver.
+        -- inversion REL. subst. case_match. subst. contradiction. admit.
       (* assert (b ∈ outputs {[idB := fusion (σfusion idA idB) idA {| blk_phis := phisA; blk_code := codeA; blk_term := termA; blk_comments := cA |} {| blk_phis := phisB; blk_code := codeB; blk_term := termB; blk_comments := cB |}]}) by admit. (* TODO YZ meta-theory has_post/eutt *)
         unfold outputs in H3. unfold outputs_acc in H3. rewrite fold_bk_acc_singleton in H3. unfold successors in H3. cbn in H3.
         apply not_elem_of_singleton. intros ?. subst a1 a2 b.
@@ -505,7 +505,13 @@ Proof.
   apply Pattern_BlockFusion_correct in IN as (G1 & IN & FUS); auto.
   apply Pattern_Graph_correct in IN; subst G1.
   destruct FUS as [EQ LUA LUB PRED SUCC].
-  assert (BNIN: idB ∉ outputs G') by admit.
+  assert (BNIN: idB ∉ outputs G'). {
+    unfold outputs. intros H. apply elem_of_fold_bk_acc in H as (id & bk & H1 & H2).
+    unfold outputs_acc in H2. simplify_map_eq.
+    apply lookup_delete_Some in H1 as [? H1]. apply lookup_delete_Some in H1 as [? H1]. 
+    pose proof predecessors_elem_of G _ H1 H2 as H3. apply H0.
+    rewrite SUCC in H3. now apply elem_of_singleton in H3.
+  }
   apply denote_ocfg_equiv with (nFROM:={[idA]}) (nTO:={[idB]}); auto; unfold inputs in *.
     * rewrite dom_insert_L, !dom_singleton_L.
       replace ({[idA; idB]} ∩ {[idB]}) with ({[idB]}: gset bid) by set_solver.
@@ -527,6 +533,6 @@ Proof.
       split. apply EQ. all:trivial. cbn. left.
     * now apply not_elem_of_singleton.
     * now apply not_elem_of_singleton.
-Admitted.
+Qed.
 
 End Theory.
