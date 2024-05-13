@@ -3,7 +3,7 @@
 
 From Vellvm Require Import Syntax ScopeTheory Semantics Theory Tactics Denotation DenotationTheory.
 From ITree Require Import ITree Eq HeterogeneousRelations.
-From Pattern Require Import Base Patterns BlockFusion.
+From Pattern Require Import Base Patterns BlockFusion CCstP.
 From Paco Require Import paco.
 (* Require Import FSets.FMapAVL FSets.FMapFacts. *)
 Require Import List.
@@ -446,14 +446,14 @@ Proof.
     simplify_eq.
     rewrite ?denote_ocfg_in_eq_itree; try by simplify_map_eq.
     destruct A as [phisA codeA termA cA].
-
+    remember {| blk_phis := phisA; blk_code := codeA; blk_term := termA; blk_comments := cA |} as A.
     Arguments denote_code : simpl never.
     Arguments denote_phis : simpl never.
     Arguments promote_phis : simpl never.
     Opaque denote_phis.
     Opaque denote_code.
 
-    cbn.
+    cbn. unfold fusion_code.
     setoid_rewrite bind_bind.
     ebind. econstructor; [reflexivity|]. intros [] ? <-.
     setoid_rewrite bind_bind.
@@ -464,25 +464,25 @@ Proof.
     rewrite tau_euttge.
     rewrite ?denote_ocfg_in_eq_itree; try by simplify_map_eq.
     destruct B as [phisB codeB termB cB].
+    remember {| blk_phis := phisB; blk_code := codeB; blk_term := termB; blk_comments := cB |} as B.
     cbn in *.
     setoid_rewrite bind_bind.
     rewrite denote_code_app_eq_itree.
     setoid_rewrite bind_bind.
     ebind. econstructor. rewrite !PHI. unfold promote_phis. cbn. rewrite denote_phis_nil. rewrite denote_code_nil. reflexivity. intros [] ? <-.
     ebind. econstructor. reflexivity. intros [] ? <-.
-    ebind. econstructor. apply term_rename_eutt.
-    intros [] [] REL; inversion REL.
-    * etau. rewrite <- SUCC. rewrite <- H2. ebase. right. apply cihL.
-      + subst. case_match.
-        -- inversion REL. rewrite H0 in H3. subst. set_solver.
-        -- inversion REL. subst. case_match. subst. contradiction. admit.
-      (* assert (b ∈ outputs {[idB := fusion (σfusion idA idB) idA {| blk_phis := phisA; blk_code := codeA; blk_term := termA; blk_comments := cA |} {| blk_phis := phisB; blk_code := codeB; blk_term := termB; blk_comments := cB |}]}) by admit. (* TODO YZ meta-theory has_post/eutt *)
-        unfold outputs in H3. unfold outputs_acc in H3. rewrite fold_bk_acc_singleton in H3. unfold successors in H3. cbn in H3.
-        apply not_elem_of_singleton. intros ?. subst a1 a2 b.
-        assert (idB ∈ predecessors idB G). {
-          eapply predecessors_elem_of. apply PRED.
-          unfold successors. cbn. unfold σfusion in H3.
-        }  *)
+    ebind. econstructor. eapply has_post_enrich_eutt; [ | | apply term_rename_eutt].
+    apply denote_terminator_exits_in_outputs.
+    apply denote_terminator_exits_in_outputs.
+    intros [] [] (REL1 & REL2 & REL3); inversion REL3.
+    * etau. rewrite <- H2. ebase. right. apply cihL.
+      + apply not_elem_of_singleton. intro EQb. 
+        subst b a1 a2. case_match. now subst. subst b0.
+        assert (BIN: idB ∈ successors B). {
+          inversion REL1. unfold successors. apply H2.
+        }
+        pose proof predecessors_elem_of G _ LUB BIN.
+        rewrite PRED in H1. set_solver.
       + now apply not_elem_of_singleton.
     * eret. now subst.
   - assert (EQσ: σ header = header). {
@@ -491,7 +491,7 @@ Proof.
     rewrite denote_ocfg_nin_eq_itree; [|now simplify_map_eq].
     rewrite denote_ocfg_nin_eq_itree; [|now simplify_map_eq].
     eret.
-Admitted.
+Qed.
 
 Theorem Denotation_BlockFusion_correct (G G':ocfg) idA A idB B f to:
   let σ := σfusion idA idB in
