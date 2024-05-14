@@ -26,8 +26,6 @@ Definition fixed_branch (f:analysis) (b: blk) := match b.(blk_term) with
   | _ => false
 end.
 
-Print fixed_branch.
-
 Definition CCstP_f {S} f: (bid * blk * S → bool) := fun '(_, b, _) => fixed_branch f b.
 
 Definition CCstP {S} f (P:Pattern S) := (Branch P) when (CCstP_f f).

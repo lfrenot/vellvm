@@ -201,7 +201,9 @@ Definition denote_ocfg_equiv_cond (g g': ocfg) (nFROM nTO :gset bid) (σ: bid ->
     origin ∉ nFROM ->
     ⟦g⟧bs (origin, header) ≈ ⟦g'⟧bs (origin, σ header).
 
-Lemma find_block_some_ocfg_rename: forall g σ id b, g !! id = Some b -> (ocfg_rename σ g) !! id = Some (bk_term_rename σ b).
+Lemma find_block_some_ocfg_rename:
+  forall g σ id b, g !! id = Some b ->
+  (ocfg_rename σ g) !! id = Some (bk_term_rename σ b).
 Proof.
   intros g. apply map_ind with (m:=g). now cbn.
   intros * NIN REC * IN.
@@ -223,7 +225,7 @@ Proof.
   intros g. apply map_ind with (m:=g). now cbn.
   intros ? [] * NIN REC *.
   unfold ocfg_rename. unfold inputs, ocfg_rename, bk_term_rename in *. rewrite fmap_insert.
-  rewrite !dom_insert_L. cbn. cbn. now rewrite <- REC.
+  rewrite !dom_insert_L. now rewrite <- REC.
 Qed.
 
 Lemma dom_ocfg_rename: forall g σ, dom g = dom (ocfg_rename σ g).
@@ -296,14 +298,15 @@ Proof.
 Qed.
 
 Theorem denote_ocfg_equiv (g1 g2 g2' : ocfg) (σ : bk_renaming) (nFROM nTO: gset bid) :
-  inputs g2 ∩ inputs g2' ## nFROM -> nFROM ⊆ inputs g2 ∪ inputs g2' -> inputs g2' ∖ inputs g2 ⊆ nTO -> nTO ⊆ inputs g2 ∪ inputs g2' ->
+  inputs g2 ∩ inputs g2' ## nFROM -> nFROM ⊆ inputs g2 ∪ inputs g2' ->
+  inputs g2' ∖ inputs g2 ⊆ nTO -> nTO ⊆ inputs g2 ∪ inputs g2' ->
   nTO ## outputs g1 -> g1 ##ₘ g2 -> ocfg_rename σ g1 ##ₘ g2' ->
   dom_renaming σ nFROM g2 g2' ->
   denote_ocfg_equiv_cond g2 g2' nFROM nTO σ ->
   forall from to' to,
   to' = σ to ->
   to ∉ nTO -> from ∉ nFROM ->
-  ⟦g1 ∪ g2⟧bs (from,to) ≈ ⟦ocfg_rename σ g1 ∪ g2'⟧bs (from, to').
+  ⟦g2 ∪ g1⟧bs (from,to) ≈ ⟦g2' ∪ ocfg_rename σ g1⟧bs (from, to').
 Proof.
   intros nFROMDIS nFROMs nTOsup nTOsub DIS' DIS DISσ [in_dom out_dom] CND.
   einit.
@@ -311,17 +314,17 @@ Proof.
   clear cihH.
   intros * EQσ NINt NINf.
   (* Either we are in the 'visible' graph or not. *)
-  case (decide (to ∈ (inputs g1 ∪ inputs g2))) as [tIN'|tNIN']. apply elem_of_union in tIN' as [tIN|tIN].
+  case (decide (to ∈ (inputs g2 ∪ inputs g1))) as [tIN'|tNIN']. apply elem_of_union in tIN' as [tIN|tIN]; cycle 1.
   - (* if we enter g1: then process [g1], and get back to the whole thing *)
     assert (σTO: σ to=to). {
       apply out_dom. assert (HNIN: to ∉ inputs g2 ∪ inputs g2'). rewrite elem_of_union. unfold inputs in *.
       rewrite map_disjoint_dom in DIS, DISσ. intros [|]; set_solver. intros ?. apply HNIN. now apply nFROMs.
     }
     pose proof find_block_in_inputs _ tIN as [bk tFIND].
-    assert (FIND: (g1 ∪ g2) !! to = Some bk) by now simplify_map_eq.
+    assert (FIND: (g2 ∪ g1) !! to = Some bk) by now simplify_map_eq.
     rewrite denote_ocfg_in_eq_itree; [| exact FIND].
     pose proof find_block_some_ocfg_rename _ σ _ _ tFIND as FINDσ.
-    assert (FIND': (ocfg_rename σ g1 ∪ g2') !! to' = Some (bk_term_rename σ bk)).
+    assert (FIND': (g2' ∪ ocfg_rename σ g1) !! to' = Some (bk_term_rename σ bk)).
     rewrite EQσ, σTO; now simplify_map_eq.
     rewrite denote_ocfg_in_eq_itree; [| exact FIND'].
     (* Then we start with a first block and then remaining of processing g1 *)
@@ -346,10 +349,10 @@ Proof.
         -- unfold inputs in *. apply map_disjoint_dom in DIS. set_solver.
         -- unfold inputs in *. apply map_disjoint_dom in DISσ. rewrite <- dom_ocfg_rename in DISσ. set_solver.
     + eret; subst; auto.
-  - rewrite (@denote_ocfg_prefix_eq_itree g1 g2 ∅ (g1 ∪ g2) from to); cycle 1; auto.
-    symmetry. apply map_union_empty.
-    rewrite (@denote_ocfg_prefix_eq_itree (ocfg_rename σ g1) g2' ∅ (ocfg_rename σ g1 ∪ g2') from to'); cycle 1; auto.
-    symmetry. apply map_union_empty.
+  - rewrite (@denote_ocfg_prefix_eq_itree ∅ g2 g1 (g2 ∪ g1) from to); cycle 1; auto.
+    symmetry. rewrite <- map_union_assoc. rewrite map_union_comm. apply map_union_empty. 1,2: apply map_disjoint_empty_l.
+    rewrite (@denote_ocfg_prefix_eq_itree ∅ g2' (ocfg_rename σ g1) (g2' ∪ ocfg_rename σ g1) from to'); cycle 1; auto.
+    symmetry. rewrite <- map_union_assoc. rewrite map_union_comm. apply map_union_empty. 1,2: apply map_disjoint_empty_l.
     ebind; econstructor.
     + subst to'.
       eapply has_post_enrich_eutt;
@@ -375,10 +378,10 @@ Proof.
       } {
         case (decide (to2 ∈ inputs g1)) as [t2IN|t2NIN].
         - pose proof find_block_in_inputs _ t2IN as [bk tFIND].
-          assert (FIND: (g1 ∪ g2) !! to2 = Some bk) by now simplify_map_eq.
+          assert (FIND: (g2 ∪ g1) !! to2 = Some bk) by now simplify_map_eq.
           rewrite denote_ocfg_in_eq_itree; [| exact FIND].
           pose proof find_block_some_ocfg_rename _ σ _ _ tFIND as FINDσ.
-          assert (FIND': (ocfg_rename σ g1 ∪ g2') !! to2 = Some (bk_term_rename σ bk)) by now simplify_map_eq.
+          assert (FIND': (g2' ∪ ocfg_rename σ g1) !! to2 = Some (bk_term_rename σ bk)) by now simplify_map_eq.
           rewrite denote_ocfg_in_eq_itree; [| exact FIND'].
           ebind.
           econstructor.
@@ -405,8 +408,7 @@ Proof.
           rewrite <- inputs_ocfg_rename.
           all: set_solver.
       }
-  -
-    assert (σTO: σ to = to). {
+  - assert (σTO: σ to = to). {
       assert (H: to ∉ inputs g2'). {
         intros ?. apply NINt. apply nTOsup. set_solver.
       } assert (H0: to ∉ inputs g2 ∪ inputs g2') by set_solver.
@@ -424,14 +426,12 @@ Qed.
 
 Definition σfusion idA idB := fun (id: bid) => if decide (id=idA) then idB else id.
 
-
-Lemma fusion_correct (G G':ocfg) idA A idB B:
+Lemma fusion_correct {S} G idA A idB B P (X:S):
   let σ := σfusion idA idB in
-  (idA, A, (idB, B, G')) ∈ (MatchAll (BlockFusion □) G) ->
+  (idA, A, (idB, B, X)) ∈ (MatchAll (BlockFusion P) G) ->
   denote_ocfg_equiv_cond {[idA := A; idB := B]} {[idB := fusion σ idA A B]} {[idA]} {[idB]} σ.
 Proof.
-  intros σ IN. apply Pattern_BlockFusion_correct in IN as (G1 & IN & FUS); auto.
-  apply Pattern_Graph_correct in IN; subst G1.
+  intros σ IN. apply Pattern_BlockFusion_correct in IN as (G' & _ & FUS); auto.
   destruct FUS as [EQ NEQAB LUA LUB PRED SUCC PHI].
   unfold denote_ocfg_equiv_cond.
   einit.
@@ -469,7 +469,9 @@ Proof.
     setoid_rewrite bind_bind.
     rewrite denote_code_app_eq_itree.
     setoid_rewrite bind_bind.
-    ebind. econstructor. rewrite !PHI. unfold promote_phis. cbn. rewrite denote_phis_nil. rewrite denote_code_nil. reflexivity. intros [] ? <-.
+    ebind. econstructor.
+    rewrite !PHI. unfold promote_phis. cbn. rewrite denote_phis_nil. rewrite denote_code_nil. reflexivity.
+    intros [] ? <-.
     ebind. econstructor. reflexivity. intros [] ? <-.
     ebind. econstructor. eapply has_post_enrich_eutt; [ | | apply term_rename_eutt].
     apply denote_terminator_exits_in_outputs.
@@ -493,18 +495,18 @@ Proof.
     eret.
 Qed.
 
-Theorem Denotation_BlockFusion_correct (G G':ocfg) idA A idB B f to:
+Theorem Denotation_BlockFusion_correct {S} G idA A idB B f to P (X:S):
   let σ := σfusion idA idB in
+  let G0 := delete idB (delete idA G) in
   to <> idB ->
   f <> idA ->
-  (idA, A, (idB, B, G')) ∈ (MatchAll (BlockFusion □) G) ->
-  ⟦ G' ∪ ({[idA:=A;idB:=B]}) ⟧bs (f, to) ≈
-  ⟦ ocfg_rename σ G' ∪ {[idB:=fusion σ idA A B]} ⟧bs (f, σ to).
+  (idA, A, (idB, B, X)) ∈ (MatchAll (BlockFusion P) G) ->
+  ⟦ G ⟧bs (f, to) ≈ ⟦ <[idB:=fusion σ idA A B]> (ocfg_rename σ G0) ⟧bs (f, σ to).
 Proof.
   intros * ineq1 ineq2 IN.
-  apply Pattern_BlockFusion_correct in IN as (G1 & IN & FUS); auto.
-  apply Pattern_Graph_correct in IN; subst G1.
+  apply Pattern_BlockFusion_correct in IN as (G' & INX & FUS); auto.
   destruct FUS as [EQ LUA LUB PRED SUCC].
+  assert (G0 = G') as -> by now subst G0 G'.
   assert (BNIN: idB ∉ outputs G'). {
     unfold outputs. intros H. apply elem_of_fold_bk_acc in H as (id & bk & H1 & H2).
     unfold outputs_acc in H2. simplify_map_eq.
@@ -512,6 +514,14 @@ Proof.
     pose proof predecessors_elem_of G _ H1 H2 as H3. apply H0.
     rewrite SUCC in H3. now apply elem_of_singleton in H3.
   }
+  assert (EQG: G = {[idA:=A;idB:=B]} ∪ G'). {
+    assert (H: {[idA:=A;idB:=B]} ∪ G' = <[idA:=A]> (<[idB:=B]> G')). {
+      rewrite ?insert_union_singleton_l. symmetry. apply map_union_assoc.
+    }
+    rewrite H.
+    simplify_map_eq. rewrite ?insert_delete; simplify_map_eq; trivial.
+  }
+  rewrite insert_union_singleton_l, EQG. clear EQG.
   apply denote_ocfg_equiv with (nFROM:={[idA]}) (nTO:={[idB]}); auto; unfold inputs in *.
     * rewrite dom_insert_L, !dom_singleton_L.
       replace ({[idA; idB]} ∩ {[idB]}) with ({[idB]}: gset bid) by set_solver.
@@ -530,7 +540,7 @@ Proof.
         subst σ. unfold σfusion. case_match; set_solver.
       + subst σ. unfold σfusion. assert (id ≠ idA) by now apply not_elem_of_singleton in H. now case_match.
     * eapply fusion_correct. apply Pattern_BlockFusion_correct. exists G'. split; cycle 1.
-      split. apply EQ. all:trivial. cbn. left.
+      split. apply EQ. all:trivial. apply INX.
     * now apply not_elem_of_singleton.
     * now apply not_elem_of_singleton.
 Qed.
@@ -575,13 +585,12 @@ Proof.
   now intros []. now rewrite list_map_id.
 Qed.
 
-Lemma rewrite_term_correct f G G' idB B:
-  correct_analysis f -> (idB, B, G') ∈ (MatchAll (CCstP f □) G) ->
+Lemma rewrite_term_correct {S} f G idB (B: blk) X (P: Pattern S):
+  correct_analysis f -> (idB, B, X) ∈ (MatchAll (CCstP f P) G) ->
   denote_ocfg_equiv_cond {[idB := B]} {[idB := rewrite_term B f]} ∅ ∅ id.
 Proof.
   intros AN IN.
-  apply Pattern_CCstP_correct in IN as (G0 & EQ & SEM).
-  apply Pattern_Graph_correct in EQ as <-.
+  apply Pattern_CCstP_correct in IN as (G0 & _ & SEM).
   destruct SEM as [EQ IN (e & l & r & EQt & AN')].
   unfold denote_ocfg_equiv_cond.
   einit.
@@ -609,28 +618,22 @@ Proof.
   - rewrite ?denote_ocfg_nin_eq_itree; now simplify_map_eq.
 Qed.
 
-Theorem Denotation_CCstP_correct f G G' idB B fr to:
-  correct_analysis f -> (idB, B, G') ∈ (MatchAll (CCstP f □) G) ->
+Theorem Denotation_CCstP_correct {S} f G idB B P (X: S) fr to:
+  correct_analysis f -> (idB, B, X) ∈ (MatchAll (CCstP f P) G) ->
   ⟦ G ⟧bs (fr, to) ≈ ⟦ <[idB := rewrite_term B f]>(delete idB G) ⟧bs (fr, to).
 Proof.
   intros AN IN.
   pose proof IN as IN0.
   pose proof AN as AN0.
-  apply Pattern_CCstP_correct in IN as (G0 & EQ & SEM).
-  apply Pattern_Graph_correct in EQ as <-.
+  apply Pattern_CCstP_correct in IN as (G' & _ & SEM).
   destruct SEM as [EQ IN (e & l & r & EQt & AN')].
-  assert (EQ'': <[idB := rewrite_term B f]> G' = G' ∪ {[idB := rewrite_term B f]}). {
-    rewrite map_union_comm. apply insert_union_singleton_l.
-    simplify_map_eq. apply map_disjoint_dom. rewrite dom_delete_L.
-    rewrite dom_singleton_L. apply disjoint_difference_l1. set_solver.
-  }
-  assert (EQ': G = G' ∪ {[idB := B]}). {
-    simplify_map_eq. rewrite <- insert_union_singleton_r. now rewrite insert_delete.
-    now simplify_map_eq.
-  } rewrite <- EQ, EQ''.
+  pose proof insert_union_singleton_l G' idB (rewrite_term B f) as EQ''.
+  assert (EQ': G = {[idB := B]} ∪ G'). {
+    simplify_map_eq. rewrite <- insert_union_singleton_l. now rewrite insert_delete.
+  } 
   pose proof denote_ocfg_id G' as Hσ.
-  rewrite <- Hσ.
-  rewrite EQ'.
+  rewrite <- EQ, EQ'', <- Hσ, EQ'.
+  clear EQ'' EQ'.
   eapply denote_ocfg_equiv.
   - apply disjoint_empty_r.
   - apply empty_subseteq.
