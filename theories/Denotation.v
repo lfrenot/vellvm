@@ -535,4 +535,120 @@ Proof.
     * now apply not_elem_of_singleton.
 Qed.
 
+(** CCstP Section *)
+
+Definition correct_analysis (f: analysis) := forall t e,
+  (f (t,e) = One -> denote_exp (Some t) e ≈ Ret (UVALUE_I1 VellvmIntegers.Int1.one)) /\
+  (f (t,e) = Zero -> denote_exp (Some t) e ≈ Ret (UVALUE_I1 VellvmIntegers.Int1.zero)).
+
+Definition term_change (t: terminator dtyp) (f: analysis): terminator dtyp := match t with
+  | TERM_Br e l r => match f e with 
+    | One => TERM_Br_1 l
+    | Zero => TERM_Br_1 r
+    | _ => t
+    end
+  | _ => t
+end.
+
+Definition rewrite_term (b: blk) (f: analysis): blk := {|
+  blk_phis       := b.(blk_phis);
+  blk_code       := b.(blk_code);
+  blk_term       := term_change b.(blk_term) f;
+  blk_comments   := b.(blk_comments)
+|}.
+
+Lemma list_map_id {A}: forall (l: list A) (f: A -> A), (forall x, f x = x) -> List.map f l = l.
+Proof.
+  induction l. trivial. intros. cbn. now rewrite IHl, H.
+Qed.
+
+Lemma denote_ocfg_id: forall g, ocfg_rename id g = g.
+Proof.
+  apply map_ind. apply fmap_empty.
+  intros * NIN REC.
+  unfold ocfg_rename in *.
+  rewrite fmap_insert. rewrite REC.
+  replace (bk_term_rename id x) with x. reflexivity.
+  destruct x.
+  unfold bk_term_rename. cbn. unfold term_rename.
+  case_match; trivial. cbn. rewrite list_map_id. trivial.
+  now intros []. now rewrite list_map_id.
+Qed.
+
+Lemma rewrite_term_correct f G G' idB B:
+  correct_analysis f -> (idB, B, G') ∈ (MatchAll (CCstP f □) G) ->
+  denote_ocfg_equiv_cond {[idB := B]} {[idB := rewrite_term B f]} ∅ ∅ id.
+Proof.
+  intros AN IN.
+  apply Pattern_CCstP_correct in IN as (G0 & EQ & SEM).
+  apply Pattern_Graph_correct in EQ as <-.
+  destruct SEM as [EQ IN (e & l & r & EQt & AN')].
+  unfold denote_ocfg_equiv_cond.
+  einit.
+  ecofix cih.
+  clear cihH.
+  intros fr to _ _.
+  case (decide (to=idB)) as [->|NEQ].
+  - rewrite ?denote_ocfg_in_eq_itree; try by simplify_map_eq.
+    destruct B as [phisB codeB termB cB].
+    remember {| blk_phis := phisB; blk_code := codeB; blk_term := termB; blk_comments := cB |} as B.
+    cbn.
+    setoid_rewrite bind_bind.
+    ebind. econstructor; [reflexivity|]. intros [] ? <-.
+    setoid_rewrite bind_bind.
+    ebind. econstructor; [reflexivity|]. intros [] ? <-.
+    rewrite !EQt.
+    ebind. econstructor.  { 
+      destruct e as [t e]. pose proof AN t e as [AN1 AN0].
+      destruct AN' as [AN'|AN']; cbn; rewrite AN'; [apply AN0 in AN'|apply AN1 in AN'];
+      rewrite AN', bind_ret_l;cbn; rewrite bind_ret_l; reflexivity.
+    }
+    intros [] ? <-.
+    * etau. ebase. right. apply cihL; set_solver.
+    * eret.
+  - rewrite ?denote_ocfg_nin_eq_itree; now simplify_map_eq.
+Qed.
+
+Theorem Denotation_CCstP_correct f G G' idB B fr to:
+  correct_analysis f -> (idB, B, G') ∈ (MatchAll (CCstP f □) G) ->
+  ⟦ G ⟧bs (fr, to) ≈ ⟦ <[idB := rewrite_term B f]>(delete idB G) ⟧bs (fr, to).
+Proof.
+  intros AN IN.
+  pose proof IN as IN0.
+  pose proof AN as AN0.
+  apply Pattern_CCstP_correct in IN as (G0 & EQ & SEM).
+  apply Pattern_Graph_correct in EQ as <-.
+  destruct SEM as [EQ IN (e & l & r & EQt & AN')].
+  assert (EQ'': <[idB := rewrite_term B f]> G' = G' ∪ {[idB := rewrite_term B f]}). {
+    rewrite map_union_comm. apply insert_union_singleton_l.
+    simplify_map_eq. apply map_disjoint_dom. rewrite dom_delete_L.
+    rewrite dom_singleton_L. apply disjoint_difference_l1. set_solver.
+  }
+  assert (EQ': G = G' ∪ {[idB := B]}). {
+    simplify_map_eq. rewrite <- insert_union_singleton_r. now rewrite insert_delete.
+    now simplify_map_eq.
+  } rewrite <- EQ, EQ''.
+  pose proof denote_ocfg_id G' as Hσ.
+  rewrite <- Hσ.
+  rewrite EQ'.
+  eapply denote_ocfg_equiv.
+  - apply disjoint_empty_r.
+  - apply empty_subseteq.
+  - unfold inputs. rewrite !dom_singleton_L. rewrite difference_diag_L. apply empty_subseteq.
+  - apply empty_subseteq.
+  - apply disjoint_empty_l.
+  - rewrite EQ. apply map_disjoint_insert_r. split. now simplify_map_eq.
+    apply map_disjoint_empty_r.
+  - rewrite Hσ, EQ. apply map_disjoint_insert_r. split. now simplify_map_eq.
+    apply map_disjoint_empty_r.
+  - split.
+    * intros id' IN'. cbn.
+      unfold inputs in *. now rewrite dom_singleton_L in IN' |- *.
+    * now cbn.
+  - eapply rewrite_term_correct; [trivial|apply IN0].
+  - now cbn.
+  - set_solver.
+  - set_solver.
+Qed.
+
 End Theory.
