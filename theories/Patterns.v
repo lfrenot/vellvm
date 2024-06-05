@@ -67,9 +67,9 @@ Proof.
       + apply IHl. now exists b'. 
 Qed.
 
-Theorem Pattern_Graph_correct: forall G G', G' ∈ (MatchAll □ G) -> G' = G.
+Theorem Pattern_Graph_correct: forall G G', G' ∈ (MatchAll □ G) <-> G' = G.
 Proof.
-  cbn. intros G G' H. set_solver.
+  cbn. intros G G'. split; intro; set_solver.
 Qed.
 
 Theorem Pattern_Head_correct {S}:

@@ -23,14 +23,12 @@ Record blocks_aux_sem (G0 G G': ocfg) id b : Prop :=
 
 Definition blocks_sem (G G': ocfg) id b := blocks_aux_sem G G G' id b.
 
-Definition blocks_aux_P G := forall G0 G' id b, 
-  ((id, b, G') ∈ (map (blocks_aux G0) (map_to_list G))) <-> blocks_aux_sem G0 G G' id b.
-
-Lemma blocks_aux_correct: forall G, blocks_aux_P G.
+Lemma blocks_aux_correct: forall G G0 G' id b, 
+  (id, b, G') ∈ map (blocks_aux G0) (map_to_list G) <-> blocks_aux_sem G0 G G' id b.
 Proof.
-  apply map_ind.
+  intros G. apply map_ind with (m:=G).
   - split. set_solver. intros []. inversion IN0.
-  - unfold blocks_aux_P. intros id b G NIN IH G0 G' id' b'. rewrite map_to_list_insert; trivial; cbn. split.
+  - clear G. intros id b G NIN IH G0 G' id' b'. rewrite map_to_list_insert; trivial; cbn. split.
     * intros IN.
       apply elem_of_cons in IN as [EQ|IN];
         [apply pair_equal_spec in EQ as [H EQ]; apply pair_equal_spec in H as [-> ->]|apply IH in IN as []];
