@@ -76,10 +76,10 @@ Definition bk_term_rename (σ : bid_renaming) (b: blk): blk := {|
 
 Definition ocfg_term_rename (σ : bid_renaming) (g: ocfg): ocfg := (bk_term_rename σ) <$> g.
 
-Record dom_renaming (σ : bid_renaming) (s : gset bid) (g g': ocfg) : Prop :=
+Record dom_renaming (σ : bid_renaming) (nFROM : gset bid) (g g': ocfg) : Prop :=
   {
     in_dom : forall id, id ∈ inputs g -> (σ id) ∈ inputs g';
-    out_dom : forall id, id ∉ s -> (σ id) = id
+    out_dom : forall id, id ∉ nFROM -> (σ id) = id
   }.
 
 Lemma find_block_some_ocfg_term_rename:
@@ -265,8 +265,8 @@ Qed.
 
 Theorem denote_ocfg_equiv (g1 g2 g2' : ocfg) (σ : bid_renaming) (nFROM nTO: gset bid) :
   inputs g2 ∩ inputs g2' ## nFROM -> nFROM ⊆ inputs g2 ∪ inputs g2' ->
-  inputs g2' ∖ inputs g2 ⊆ nTO -> nTO ⊆ inputs g2 ∪ inputs g2' ->
-  nTO ## outputs g1 -> g1 ##ₘ g2 -> ocfg_term_rename σ g1 ##ₘ g2' ->
+  inputs g2' ∖ inputs g2 ⊆ nTO -> nTO ⊆ inputs g2 ∪ inputs g2' -> nTO ## outputs g1 ->
+  g1 ##ₘ g2 -> ocfg_term_rename σ g1 ##ₘ g2' ->
   dom_renaming σ nFROM g2 g2' ->
   denote_ocfg_equiv_cond g2 g2' nFROM nTO σ ->
   forall from to' to,

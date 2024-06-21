@@ -25,11 +25,10 @@ Inductive Pattern : Type -> Type :=
 Notation "□" := Graph.
 Notation "P 'when' b" := (When P b) (at level 45).
 
-Definition flat_map_r {A B C} (f : B -> list C) :=
-  fix flat_map_r (l : list (A*B)) : list (A*C) :=
+Fixpoint flat_map_r {A B C} (f : B -> list C) (l : list (A*B)) : list (A*C) :=
     match l with
     | [] => []
-    | (a, b)::q => ((fun c => (a, c)) <$> (f b))++flat_map_r q
+    | (a, b)::q => ((fun c => (a, c)) <$> (f b))++flat_map_r f q
 end.
 
 Fixpoint MatchAll {S} (P: Pattern S) (g: ocfg) : list S :=
