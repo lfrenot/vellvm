@@ -71,7 +71,7 @@ Definition correct_analysis (f: analysis) := forall t e,
 
 Lemma rewrite_term_correct {S} f G idB (B: blk) X (P: Pattern S):
   correct_analysis f -> (idB, B, X) ∈ (MatchAll (CCstP f P) G) ->
-  denote_ocfg_equiv_cond {[idB := B]} {[idB := rewrite_term B f]} ∅ ∅ id.
+  denote_ocfg_equiv_cond {[idB := B]} {[idB := rewrite_term B f]} ∅ id.
 Proof.
   intros AN IN.
   apply Pattern_CCstP_correct in IN as (G0 & _ & SEM).
@@ -80,7 +80,7 @@ Proof.
   einit.
   ecofix cih.
   clear cihH.
-  intros fr to _ _.
+  intros fr to _.
   case (decide (to=idB)) as [->|NEQ].
   - rewrite ?denote_ocfg_in_eq_itree; try by simplify_map_eq.
     destruct B as [phisB codeB termB cB].
@@ -119,8 +119,6 @@ Proof.
   rewrite <- EQ, EQ'', <- Hσ, EQ'.
   clear EQ'' EQ'.
   eapply denote_ocfg_equiv.
-  - apply disjoint_empty_r.
-  - apply empty_subseteq.
   - unfold inputs. rewrite !dom_singleton_L. rewrite difference_diag_L. apply empty_subseteq.
   - apply empty_subseteq.
   - apply disjoint_empty_l.
@@ -134,7 +132,6 @@ Proof.
     * now cbn.
   - eapply rewrite_term_correct; [trivial|apply IN0].
   - now cbn.
-  - set_solver.
   - set_solver.
 Qed.
 

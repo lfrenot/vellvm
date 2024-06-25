@@ -91,7 +91,7 @@ Import eutt_Notations.
 Lemma fusion_correct {S} G idA A idB B P (X:S):
   let σ := σfusion idA idB in
   (idA, A, (idB, B, X)) ∈ (MatchAll (BlockFusion P) G) ->
-  denote_ocfg_equiv_cond {[idA := A; idB := B]} {[idB := fusion σ idA A B]} {[idA]} {[idB]} σ.
+  denote_ocfg_equiv_cond {[idA := A; idB := B]} {[idB := fusion σ idA A B]} {[idB]} σ.
 Proof.
   intros σ IN. apply Pattern_BlockFusion_correct in IN as (G' & _ & FUS); auto.
   destruct FUS as [EQ NEQAB LUA LUB PRED SUCC PHI].
@@ -99,8 +99,8 @@ Proof.
   einit.
   ecofix cih.
   clear cihH.
-  intros * NINh NINo.
-  apply not_elem_of_singleton in NINh, NINo.
+  intros * NINh.
+  apply not_elem_of_singleton in NINh.
   case (decide (header = idA)) as [->|NEQ].
 
   - subst σ. unfold σfusion.
@@ -140,14 +140,13 @@ Proof.
     apply denote_terminator_exits_in_outputs.
     intros [] [] (REL1 & REL2 & REL3); inversion REL3.
     * etau. rewrite <- H2. ebase. right. apply cihL.
-      + apply not_elem_of_singleton. intro EQb. 
-        subst b a1 a2. case_match. now subst. subst b0.
-        assert (BIN: idB ∈ successors B). {
-          inversion REL1. unfold successors. apply H2.
-        }
-        pose proof predecessors_elem_of G _ LUB BIN.
-        rewrite PRED in H1. set_solver.
-      + now apply not_elem_of_singleton.
+      apply not_elem_of_singleton. intro EQb. 
+      subst b a1 a2. case_match. now subst. subst b0.
+      assert (BIN: idB ∈ successors B). {
+        inversion REL1. unfold successors. apply H2.
+      }
+      pose proof predecessors_elem_of G _ LUB BIN.
+      rewrite PRED in H1. set_solver.
     * eret. now subst.
 
   - assert (EQσ: σ header = header). {
@@ -162,11 +161,10 @@ Theorem Denotation_BlockFusion_correct {S} G idA A idB B f to P (X:S):
   let σ := σfusion idA idB in
   let G0 := delete idB (delete idA G) in
   to <> idB ->
-  f <> idA ->
   (idA, A, (idB, B, X)) ∈ (MatchAll (BlockFusion P) G) ->
   ⟦ G ⟧bs (f, to) ≈ ⟦ <[idB:=fusion σ idA A B]> (ocfg_term_rename σ G0) ⟧bs (f, σ to).
 Proof.
-  intros * ineq1 ineq2 IN.
+  intros * ineq1 IN.
   apply Pattern_BlockFusion_correct in IN as (G' & INX & FUS); auto.
   destruct FUS as [EQ LUA LUB PRED SUCC].
   assert (G0 = G') as -> by now subst G0 G'.
@@ -185,11 +183,7 @@ Proof.
     simplify_map_eq. rewrite ?insert_delete; simplify_map_eq; trivial.
   }
   rewrite insert_union_singleton_l, EQG. clear EQG.
-  apply denote_ocfg_equiv with (nFROM:={[idA]}) (nTO:={[idB]}); auto; unfold inputs in *.
-    * rewrite dom_insert_L, !dom_singleton_L.
-      replace ({[idA; idB]} ∩ {[idB]}) with ({[idB]}: gset bid) by set_solver.
-      apply disjoint_singleton_l. now apply not_elem_of_singleton.
-    * rewrite dom_insert_L. apply elem_of_subseteq_singleton. set_solver.
+  apply denote_ocfg_equiv with (nTO:={[idB]}); auto; unfold inputs in *.
     * rewrite dom_insert_L, !dom_singleton_L.
       replace ({[idB]} ∖ {[idA; idB]}) with (∅: gset bid) by set_solver.
       apply empty_subseteq.
@@ -201,10 +195,9 @@ Proof.
     * split; intros id H.
       + unfold inputs in *. rewrite dom_insert_L in H. rewrite dom_singleton_L in H |- *.
         subst σ. unfold σfusion. case_match; set_solver.
-      + subst σ. unfold σfusion. assert (id ≠ idA) by now apply not_elem_of_singleton in H. now case_match.
+      + subst σ. unfold σfusion. assert (id ≠ idA) by now (intros ->; set_solver). now case_match.
     * eapply fusion_correct. apply Pattern_BlockFusion_correct. exists G'. split; cycle 1.
       split. apply EQ. all:trivial. apply INX.
-    * now apply not_elem_of_singleton.
     * now apply not_elem_of_singleton.
 Qed.
 

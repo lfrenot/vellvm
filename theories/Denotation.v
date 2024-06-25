@@ -76,10 +76,10 @@ Definition bk_term_rename (σ : bid_renaming) (b: blk): blk := {|
 
 Definition ocfg_term_rename (σ : bid_renaming) (g: ocfg): ocfg := (bk_term_rename σ) <$> g.
 
-Record dom_renaming (σ : bid_renaming) (nFROM : gset bid) (g g': ocfg) : Prop :=
+Record dom_renaming (σ : bid_renaming) (g g': ocfg) : Prop :=
   {
     in_dom : forall id, id ∈ inputs g -> (σ id) ∈ inputs g';
-    out_dom : forall id, id ∉ nFROM -> (σ id) = id
+    out_dom : forall id, id ∉ inputs g -> (σ id) = id
   }.
 
 Lemma find_block_some_ocfg_term_rename:
@@ -194,10 +194,10 @@ ebind : use up-to bind
 
 *)
 
-Definition denote_ocfg_equiv_cond (g g': ocfg) (nFROM nTO :gset bid) (σ: bid -> bid) :=
+Definition denote_ocfg_equiv_cond (g g': ocfg) (nTO :gset bid) (σ: bid -> bid) :=
   forall origin header,
     header ∉ nTO ->
-    origin ∉ nFROM ->
+    (* origin ∉ nFROM -> *)
     ⟦g⟧bs (origin, header) ≈ ⟦g'⟧bs (origin, σ header).
 
 Lemma term_rename_eutt :
@@ -263,28 +263,29 @@ Proof.
   apply term_rename_eutt.
 Qed.
 
-Theorem denote_ocfg_equiv (g1 g2 g2' : ocfg) (σ : bid_renaming) (nFROM nTO: gset bid) :
-  inputs g2 ∩ inputs g2' ## nFROM -> nFROM ⊆ inputs g2 ∪ inputs g2' ->
+Theorem denote_ocfg_equiv (g1 g2 g2' : ocfg) (σ : bid_renaming) (nTO: gset bid) :
+  (* inputs g2 ∩ inputs g2' ## nFROM -> nFROM ⊆ inputs g2 ∪ inputs g2' -> *)
   inputs g2' ∖ inputs g2 ⊆ nTO -> nTO ⊆ inputs g2 ∪ inputs g2' -> nTO ## outputs g1 ->
   g1 ##ₘ g2 -> ocfg_term_rename σ g1 ##ₘ g2' ->
-  dom_renaming σ nFROM g2 g2' ->
-  denote_ocfg_equiv_cond g2 g2' nFROM nTO σ ->
+  dom_renaming σ g2 g2' ->
+  denote_ocfg_equiv_cond g2 g2' nTO σ ->
   forall from to' to,
   to' = σ to ->
-  to ∉ nTO -> from ∉ nFROM ->
+  to ∉ nTO ->
+  (* from ∉ nFROM -> *)
   ⟦g2 ∪ g1⟧bs (from,to) ≈ ⟦g2' ∪ ocfg_term_rename σ g1⟧bs (from, to').
 Proof.
-  intros nFROMDIS nFROMs nTOsup nTOsub DIS' DIS DISσ [in_dom out_dom] CND.
+  intros nTOsup nTOsub DIS' DIS DISσ [in_dom out_dom] CND.
   einit.
   ecofix cih.
   clear cihH.
-  intros * EQσ NINt NINf.
+  intros * EQσ NINt.
   (* Either we are in the 'visible' graph or not. *)
   case (decide (to ∈ (inputs g2 ∪ inputs g1))) as [tIN'|tNIN']. apply elem_of_union in tIN' as [tIN|tIN]; cycle 1.
   - (* if we enter g1: then process [g1], and get back to the whole thing *)
     assert (σTO: σ to=to). {
       apply out_dom. assert (HNIN: to ∉ inputs g2 ∪ inputs g2'). rewrite elem_of_union. unfold inputs in *.
-      rewrite map_disjoint_dom in DIS, DISσ. intros [|]; set_solver. intros ?. apply HNIN. now apply nFROMs.
+      rewrite map_disjoint_dom in DIS, DISσ. intros [|]; set_solver. intros ?. apply HNIN. set_solver.
     }
     pose proof find_block_in_inputs _ tIN as [bk tFIND].
     assert (FIND: (g2 ∪ g1) !! to = Some bk) by now simplify_map_eq.
@@ -307,13 +308,13 @@ Proof.
       right.
       rewrite EQσ,σTO.
       apply cihL; auto.
-      * assert (a1 ∈ outputs g1).
-        cbn in *.
-        eapply outputs_elem_of; eauto.
-        set_solver.
-      * eapply not_elem_of_weaken. 2: apply nFROMs. intros toIN. apply elem_of_union in toIN as [toIN|toIN].
+      assert (a1 ∈ outputs g1).
+      cbn in *.
+      eapply outputs_elem_of; eauto.
+      set_solver.
+      (* * eapply not_elem_of_weaken. 2: apply nFROMs. intros toIN. apply elem_of_union in toIN as [toIN|toIN].
         -- unfold inputs in *. apply map_disjoint_dom in DIS. set_solver.
-        -- unfold inputs in *. apply map_disjoint_dom in DISσ. rewrite <- dom_ocfg_term_rename in DISσ. set_solver.
+        -- unfold inputs in *. apply map_disjoint_dom in DISσ. rewrite <- dom_ocfg_term_rename in DISσ. set_solver. *)
     + eret; subst; auto.
   - rewrite (@denote_ocfg_prefix_eq_itree ∅ g2 g1 (g2 ∪ g1) from to); cycle 1; auto.
     symmetry. rewrite <- map_union_assoc. rewrite map_union_comm. apply map_union_empty. 1,2: apply map_disjoint_empty_l.
@@ -337,10 +338,10 @@ Proof.
       assert (INf2: from2 ∈ inputs g2 ∩ inputs g2').
       by (cbn in *; set_solver).
       assert (to2 ∉ nTO) by (intros H; apply NINt2; now apply nTOsub).
-      assert (from2 ∉ nFROM) by set_solver.
+      (* assert (from2 ∉ nFROM) by set_solver. *)
       assert (EQσ2: σ to2 = to2). {
         apply out_dom. assert (HNIN: to2 ∉ inputs g2 ∪ inputs g2'). rewrite elem_of_union. unfold inputs in *.
-        rewrite map_disjoint_dom in DIS, DISσ. intros [|]; set_solver. intros ?. apply HNIN. now apply nFROMs.
+        rewrite map_disjoint_dom in DIS, DISσ. intros [|]; set_solver. intros ?. apply HNIN. set_solver.
       } {
         case (decide (to2 ∈ inputs g1)) as [t2IN|t2NIN].
         - pose proof find_block_in_inputs _ t2IN as [bk tFIND].
@@ -378,7 +379,7 @@ Proof.
       assert (H: to ∉ inputs g2'). {
         intros ?. apply NINt. apply nTOsup. set_solver.
       } assert (H0: to ∉ inputs g2 ∪ inputs g2') by set_solver.
-      apply out_dom. intros ?. apply H0. now apply nFROMs.
+      apply out_dom. intros ?. apply H0. set_solver.
     }
     subst; rewrite σTO.
     rewrite denote_ocfg_nin_eq_itree.
